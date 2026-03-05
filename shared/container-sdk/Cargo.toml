@@ -15,6 +15,7 @@ futures-util = { workspace = true }
 
 # Serialization
 prost = { workspace = true }
+prost-types = { workspace = true }
 bytes = { workspace = true }
 
 # Network

@@ -13,6 +13,11 @@ members = [
     "containers/tools/code-executor",
     "containers/tools/file-system",
     "containers/tools/browser",
+
+    # Apple platform (macOS/Metal)
+    "platform/apple/host",
+    "platform/apple/video",
+    "platform/apple/inference",
 ]
 
 # Platform-specific members are conditionally included based on sparse-checkout.
@@ -61,6 +66,11 @@ bollard = "0.18"
 # HTTP client (for LLM APIs)
 reqwest = { version = "0.12", features = ["json", "stream"] }
 async-stream = "0.3"
+
+# HTTP server (for Host UI)
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
 
 # GUI
 egui = "0.29"

@@ -83,7 +83,9 @@ impl InputHandler {
 
     /// Process pending input events.
     pub fn process_events(&mut self, surfaces: &mut SurfaceManager) -> Result<()> {
-        for event in self.pending_events.drain(..) {
+        // Take ownership of pending events to avoid borrow conflicts
+        let events = std::mem::take(&mut self.pending_events);
+        for event in events {
             self.handle_event(event, surfaces)?;
         }
         Ok(())

@@ -1,0 +1,85 @@
+:root {
+	--color-bg: #1a1a2e;
+	--color-bg-secondary: #16213e;
+	--color-surface: #0f3460;
+	--color-primary: #e94560;
+	--color-secondary: #533483;
+	--color-text: #eaeaea;
+	--color-text-muted: #a0a0a0;
+	--color-success: #00d26a;
+	--color-warning: #ffc107;
+	--color-error: #e94560;
+	--font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+	--font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+	--radius: 8px;
+	--shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3);
+}
+
+* {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
+
+html,
+body {
+	height: 100%;
+	font-family: var(--font-sans);
+	background-color: var(--color-bg);
+	color: var(--color-text);
+}
+
+a {
+	color: var(--color-primary);
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+button {
+	cursor: pointer;
+	font-family: inherit;
+	font-size: inherit;
+	border: none;
+	border-radius: var(--radius);
+	padding: 0.5rem 1rem;
+	background-color: var(--color-primary);
+	color: white;
+	transition: opacity 0.2s;
+}
+
+button:hover {
+	opacity: 0.9;
+}
+
+button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.card {
+	background-color: var(--color-surface);
+	border-radius: var(--radius);
+	padding: 1.5rem;
+	box-shadow: var(--shadow);
+}
+
+.status-running {
+	color: var(--color-success);
+}
+
+.status-stopped {
+	color: var(--color-text-muted);
+}
+
+.status-starting,
+.status-stopping {
+	color: var(--color-warning);
+}
+
+.status-failed,
+.status-unhealthy {
+	color: var(--color-error);
+}

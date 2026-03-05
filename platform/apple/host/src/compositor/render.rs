@@ -206,6 +206,26 @@ impl Renderer for MetalRenderer {
         Ok(TextureHandle(id))
     }
 
+    #[cfg(unix)]
+    fn import_dma_buf(
+        &mut self,
+        fd: std::os::unix::io::RawFd,
+        format: TextureFormat,
+        _offset: u64,
+        _stride: u32,
+    ) -> PlatformResult<TextureHandle> {
+        // DMA-BUF import is primarily a Linux feature for zero-copy sharing.
+        // On macOS, we would typically use IOSurface instead.
+        // For now, return an error indicating this is not supported.
+        debug!(
+            "import_dma_buf called with fd={}, format={:?} - not supported on macOS",
+            fd, format.format
+        );
+        Err(PlatformError::unsupported(
+            "DMA-BUF import is not supported on macOS; use IOSurface instead",
+        ))
+    }
+
     fn update_texture(
         &mut self,
         texture: TextureHandle,

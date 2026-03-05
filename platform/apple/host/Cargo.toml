@@ -21,10 +21,7 @@ tokio = { workspace = true }
 futures-util = { workspace = true }
 async-trait = { workspace = true }
 
-# Compositor
-smithay = { workspace = true }
-
-# Graphics
+# Graphics (Metal-based rendering on macOS, no Smithay/Wayland)
 wgpu = { workspace = true }
 ash = { workspace = true }
 
@@ -47,6 +44,11 @@ bytes = { workspace = true }
 
 # Network
 tokio-tungstenite = { workspace = true }
+
+# HTTP server
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
 
 # Serialization
 serde = { workspace = true }

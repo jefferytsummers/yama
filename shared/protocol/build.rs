@@ -9,9 +9,9 @@ fn main() -> Result<()> {
     // Configure prost-build
     let mut config = prost_build::Config::new();
 
-    // Add serde derives for JSON serialization
-    config.type_attribute(".", "#[derive(serde::Serialize, serde::Deserialize)]");
-    config.type_attribute(".", "#[serde(rename_all = \"camelCase\")]");
+    // Note: Serde derives are disabled because prost_types::Timestamp and Any
+    // don't implement Serialize/Deserialize. If JSON serialization is needed,
+    // use prost-wkt-types or implement custom serialization.
 
     // Generate code for all proto files
     config.compile_protos(

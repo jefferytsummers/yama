@@ -23,7 +23,7 @@ runtime = "docker"
 # Health check interval in seconds
 health_interval = 5
 # Restart policy: "always", "on-failure", "never"
-restart_policy = "on-failure"
+restart_policy = "on_failure"
 # Maximum restart attempts
 max_restarts = 3
 
@@ -107,6 +107,15 @@ image = "yama-agent:latest"
 gpu_required = false
 health_endpoint = "/health"
 socket = "/tmp/yama-agent.sock"
+
+[http_server]
+# HTTP server for Host UI (System Engineer View)
+bind = "0.0.0.0"
+port = 8080
+# Path to static files (Svelte build output)
+static_path = "web/build"
+# Enable CORS for development
+cors_enabled = true
 
 [ui]
 # UI configuration
