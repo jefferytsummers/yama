@@ -1,0 +1,48 @@
+# Build artifacts
+/target/
+**/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+*.env
+
+# Logs
+*.log
+/logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Docker
+.docker/
+
+# Generated protobuf code (rebuilt on build)
+shared/protocol/src/generated/
+
+# Models (downloaded separately)
+**/models/*.gguf
+**/models/*.safetensors
+**/models/*.bin
+
+# Test coverage
+*.profraw
+coverage/
+lcov.info
+
+# Cargo lock in libraries (keep in workspace root)
+shared/*/Cargo.lock
+containers/*/Cargo.lock
+platform/*/*/Cargo.lock

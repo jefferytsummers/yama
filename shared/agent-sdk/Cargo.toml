@@ -1,0 +1,36 @@
+[package]
+name = "yama-agent-sdk"
+version.workspace = true
+edition = "2024"
+license.workspace = true
+description = "Yama Agent SDK - Runtime library for building LLM agents"
+
+[dependencies]
+# Protocol types
+yama-protocol = { path = "../protocol" }
+
+# Async runtime
+tokio = { workspace = true }
+futures-util = { workspace = true }
+async-stream = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# HTTP client for LLM APIs
+reqwest = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Configuration
+toml = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = { workspace = true }

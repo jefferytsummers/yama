@@ -1,0 +1,20 @@
+# Yama Sparse Checkout - Apple Silicon
+# This file defines which directories to include in an Apple Silicon worktree
+
+# Root configuration files
+/Cargo.toml
+/Cargo.lock
+/yama.toml
+/.gitignore
+
+# Shared crates (always included)
+/shared/
+
+# Platform-agnostic containers
+/containers/
+
+# Apple-specific platform code
+/platform/apple/
+
+# Scripts
+/scripts/

@@ -1,0 +1,25 @@
+[package]
+name = "yama-protocol"
+version.workspace = true
+edition = "2024"
+license.workspace = true
+description = "Yama protocol definitions - Protobuf schemas and generated Rust code"
+
+[dependencies]
+prost = { workspace = true }
+prost-types = { workspace = true }
+bytes = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[build-dependencies]
+prost-build = "0.13"
+
+[features]
+default = []
+# Enable tonic gRPC support
+grpc = ["tonic"]
+
+[dependencies.tonic]
+workspace = true
+optional = true

@@ -1,0 +1,301 @@
+// Yama Protocol - System Types
+// Messages for system management, orchestration, and UI.
+
+syntax = "proto3";
+
+package yama.system;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+// Container/Service orchestration
+message ServiceDescriptor {
+    string name = 1;
+    string image = 2;
+    ServiceType type = 3;
+    bool gpu_required = 4;
+    string health_endpoint = 5;
+    string socket_path = 6;
+    repeated PortMapping ports = 7;
+    repeated VolumeMount volumes = 8;
+    map<string, string> environment = 9;
+    ResourceLimits resources = 10;
+    RestartPolicy restart_policy = 11;
+}
+
+enum ServiceType {
+    SERVICE_TYPE_UNSPECIFIED = 0;
+    SERVICE_TYPE_PLATFORM = 1;    // Layer 2: GPU-enabled platform services
+    SERVICE_TYPE_APPLICATION = 2; // Layer 3: Application services
+    SERVICE_TYPE_EXTERNAL = 3;    // Layer 4: External integrations
+}
+
+message PortMapping {
+    uint32 container_port = 1;
+    uint32 host_port = 2;
+    string protocol = 3; // "tcp" or "udp"
+}
+
+message VolumeMount {
+    string source = 1;
+    string target = 2;
+    bool read_only = 3;
+}
+
+message ResourceLimits {
+    uint64 memory_mb = 1;
+    float cpu_cores = 2;
+    repeated string gpu_ids = 3;
+}
+
+message RestartPolicy {
+    RestartType type = 1;
+    uint32 max_retries = 2;
+    uint32 delay_seconds = 3;
+}
+
+enum RestartType {
+    RESTART_TYPE_UNSPECIFIED = 0;
+    RESTART_TYPE_NEVER = 1;
+    RESTART_TYPE_ON_FAILURE = 2;
+    RESTART_TYPE_ALWAYS = 3;
+}
+
+// Service lifecycle commands
+message StartService {
+    string service_name = 1;
+    map<string, string> overrides = 2;
+}
+
+message StopService {
+    string service_name = 1;
+    uint32 timeout_seconds = 2;
+    bool force = 3;
+}
+
+message RestartService {
+    string service_name = 1;
+}
+
+message ServiceEvent {
+    string service_name = 1;
+    ServiceEventType event = 2;
+    google.protobuf.Timestamp timestamp = 3;
+    string message = 4;
+    int32 exit_code = 5;
+}
+
+enum ServiceEventType {
+    SERVICE_EVENT_UNSPECIFIED = 0;
+    SERVICE_EVENT_STARTING = 1;
+    SERVICE_EVENT_STARTED = 2;
+    SERVICE_EVENT_HEALTHY = 3;
+    SERVICE_EVENT_UNHEALTHY = 4;
+    SERVICE_EVENT_STOPPING = 5;
+    SERVICE_EVENT_STOPPED = 6;
+    SERVICE_EVENT_CRASHED = 7;
+    SERVICE_EVENT_RESTARTING = 8;
+}
+
+// Video source management
+message VideoSource {
+    string source_id = 1;
+    string name = 2;
+    VideoSourceType type = 3;
+    string url = 4;
+    bool enabled = 5;
+    VideoSourceConfig config = 6;
+}
+
+enum VideoSourceType {
+    VIDEO_SOURCE_TYPE_UNSPECIFIED = 0;
+    VIDEO_SOURCE_TYPE_RTSP = 1;
+    VIDEO_SOURCE_TYPE_USB = 2;
+    VIDEO_SOURCE_TYPE_SCREEN = 3;
+    VIDEO_SOURCE_TYPE_FILE = 4;
+}
+
+message VideoSourceConfig {
+    uint32 width = 1;
+    uint32 height = 2;
+    uint32 fps = 3;
+    string codec = 4;
+    bool enable_ai = 5;
+    AiConfig ai = 6;
+}
+
+message AiConfig {
+    bool yolo_enabled = 1;
+    string yolo_model = 2;
+    float yolo_confidence = 3;
+    bool vlm_enabled = 4;
+    uint32 vlm_interval_frames = 5;
+    string target_agent = 6;
+}
+
+message VideoSourceStatus {
+    string source_id = 1;
+    VideoSourceState state = 2;
+    uint64 frames_received = 3;
+    uint64 frames_dropped = 4;
+    float current_fps = 5;
+    float latency_ms = 6;
+    google.protobuf.Timestamp last_frame_at = 7;
+}
+
+enum VideoSourceState {
+    VIDEO_SOURCE_STATE_UNSPECIFIED = 0;
+    VIDEO_SOURCE_STATE_CONNECTING = 1;
+    VIDEO_SOURCE_STATE_STREAMING = 2;
+    VIDEO_SOURCE_STATE_PAUSED = 3;
+    VIDEO_SOURCE_STATE_ERROR = 4;
+    VIDEO_SOURCE_STATE_DISCONNECTED = 5;
+}
+
+// Compositor/UI messages
+message CompositorConfig {
+    string backend = 1;
+    string renderer = 2;
+    uint32 target_fps = 3;
+    UiConfig ui = 4;
+}
+
+message UiConfig {
+    string theme = 1;
+    PanelLayout layout = 2;
+    bool show_status_bar = 3;
+    OverlayConfig overlays = 4;
+}
+
+message PanelLayout {
+    repeated Panel panels = 1;
+}
+
+message Panel {
+    string id = 1;
+    PanelType type = 2;
+    PanelPosition position = 3;
+    float width_percent = 4;
+    float height_percent = 5;
+    bool visible = 6;
+}
+
+enum PanelType {
+    PANEL_TYPE_UNSPECIFIED = 0;
+    PANEL_TYPE_VIDEO = 1;
+    PANEL_TYPE_AGENT_CHAT = 2;
+    PANEL_TYPE_SERVICES = 3;
+    PANEL_TYPE_CONFIG = 4;
+    PANEL_TYPE_LOGS = 5;
+}
+
+message PanelPosition {
+    float x = 1;
+    float y = 2;
+}
+
+message OverlayConfig {
+    bool show_detection_boxes = 1;
+    bool show_confidence_labels = 2;
+    bool show_tracking_ids = 3;
+    bool show_geo_overlay = 4;
+}
+
+// Input events (from UI to compositor)
+message InputEvent {
+    oneof event {
+        KeyEvent key = 1;
+        MouseEvent mouse = 2;
+        VideoCommand video_cmd = 3;
+        AgentCommand agent_cmd = 4;
+    }
+}
+
+message KeyEvent {
+    uint32 keycode = 1;
+    repeated Modifier modifiers = 2;
+    bool pressed = 3;
+}
+
+enum Modifier {
+    MODIFIER_UNSPECIFIED = 0;
+    MODIFIER_SHIFT = 1;
+    MODIFIER_CTRL = 2;
+    MODIFIER_ALT = 3;
+    MODIFIER_META = 4;
+}
+
+message MouseEvent {
+    MouseEventType type = 1;
+    float x = 2;
+    float y = 3;
+    uint32 button = 4;
+}
+
+enum MouseEventType {
+    MOUSE_EVENT_TYPE_UNSPECIFIED = 0;
+    MOUSE_EVENT_TYPE_MOVE = 1;
+    MOUSE_EVENT_TYPE_DOWN = 2;
+    MOUSE_EVENT_TYPE_UP = 3;
+    MOUSE_EVENT_TYPE_SCROLL = 4;
+}
+
+message VideoCommand {
+    VideoCommandType type = 1;
+    string source_id = 2;
+}
+
+enum VideoCommandType {
+    VIDEO_COMMAND_TYPE_UNSPECIFIED = 0;
+    VIDEO_COMMAND_TYPE_PLAY = 1;
+    VIDEO_COMMAND_TYPE_PAUSE = 2;
+    VIDEO_COMMAND_TYPE_SELECT = 3;
+    VIDEO_COMMAND_TYPE_FULLSCREEN = 4;
+}
+
+message AgentCommand {
+    AgentCommandType type = 1;
+    string agent_id = 2;
+    string message = 3;
+}
+
+enum AgentCommandType {
+    AGENT_COMMAND_TYPE_UNSPECIFIED = 0;
+    AGENT_COMMAND_TYPE_SEND = 1;
+    AGENT_COMMAND_TYPE_CLEAR = 2;
+    AGENT_COMMAND_TYPE_STOP = 3;
+}
+
+// System metrics
+message SystemMetrics {
+    google.protobuf.Timestamp timestamp = 1;
+    CpuMetrics cpu = 2;
+    MemoryMetrics memory = 3;
+    GpuMetrics gpu = 4;
+    NetworkMetrics network = 5;
+}
+
+message CpuMetrics {
+    float usage_percent = 1;
+    repeated float core_usage = 2;
+}
+
+message MemoryMetrics {
+    uint64 total_bytes = 1;
+    uint64 used_bytes = 2;
+    uint64 available_bytes = 3;
+}
+
+message GpuMetrics {
+    string name = 1;
+    float usage_percent = 2;
+    uint64 memory_used_bytes = 3;
+    uint64 memory_total_bytes = 4;
+    float temperature_celsius = 5;
+}
+
+message NetworkMetrics {
+    uint64 bytes_sent = 1;
+    uint64 bytes_received = 2;
+    float latency_ms = 3;
+}

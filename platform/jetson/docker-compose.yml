@@ -1,0 +1,164 @@
+# Yama Docker Compose - NVIDIA Jetson
+# Run platform services with GPU acceleration
+
+version: "3.8"
+
+services:
+  # Video processing service (GStreamer + NVDEC)
+  video:
+    build:
+      context: ../..
+      dockerfile: platform/jetson/video/Dockerfile
+    image: yama-video-jetson:latest
+    container_name: yama-video-jetson
+    restart: unless-stopped
+    runtime: nvidia
+    volumes:
+      # Event bus socket
+      - /tmp/yama-event.sock:/tmp/yama-event.sock
+      # Video socket for frame sharing
+      - /tmp/yama-video.sock:/tmp/yama-video.sock
+      # NVIDIA specific
+      - /tmp/argus_socket:/tmp/argus_socket
+    devices:
+      - /dev/video0:/dev/video0
+    environment:
+      - RUST_LOG=info
+      - GST_DEBUG=2
+      - YAMA_EVENT_BUS=/tmp/yama-event.sock
+      - DISPLAY=:0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - yama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, video]
+
+  # Inference service (TensorRT-LLM/llama.cpp + CUDA)
+  inference:
+    build:
+      context: ../..
+      dockerfile: platform/jetson/inference/Dockerfile
+    image: yama-inference-jetson:latest
+    container_name: yama-inference-jetson
+    restart: unless-stopped
+    runtime: nvidia
+    volumes:
+      # Event bus socket
+      - /tmp/yama-event.sock:/tmp/yama-event.sock
+      # Model storage
+      - yama-models:/app/models
+    environment:
+      - RUST_LOG=info
+      - YAMA_EVENT_BUS=/tmp/yama-event.sock
+      - MODEL_PATH=/app/models
+      - CUDA_VISIBLE_DEVICES=0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 120s  # LLM loading takes time
+    networks:
+      - yama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, compute]
+        limits:
+          memory: 8G  # Adjust based on Jetson model
+
+  # Agent runtime service
+  agent:
+    build:
+      context: ../..
+      dockerfile: containers/agent/Dockerfile
+    image: yama-agent:latest
+    container_name: yama-agent
+    restart: unless-stopped
+    volumes:
+      # Event bus socket
+      - /tmp/yama-event.sock:/tmp/yama-event.sock
+      # Agent configuration and skills
+      - ../../shared/skills:/app/skills:ro
+    environment:
+      - RUST_LOG=info
+      - YAMA_EVENT_BUS=/tmp/yama-event.sock
+    depends_on:
+      inference:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - yama
+
+  # Code executor tool (optional)
+  tool-code-executor:
+    build:
+      context: ../..
+      dockerfile: containers/tools/code-executor/Dockerfile
+    image: yama-tool-code-executor:latest
+    container_name: yama-tool-code-executor
+    restart: unless-stopped
+    profiles:
+      - tools
+    volumes:
+      - /tmp/yama-event.sock:/tmp/yama-event.sock
+      - yama-workspace:/workspace
+    environment:
+      - RUST_LOG=info
+      - YAMA_EVENT_BUS=/tmp/yama-event.sock
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - yama
+
+  # File system tool (optional)
+  tool-file-system:
+    build:
+      context: ../..
+      dockerfile: containers/tools/file-system/Dockerfile
+    image: yama-tool-file-system:latest
+    container_name: yama-tool-file-system
+    restart: unless-stopped
+    profiles:
+      - tools
+    volumes:
+      - /tmp/yama-event.sock:/tmp/yama-event.sock
+      - yama-workspace:/workspace
+    environment:
+      - RUST_LOG=info
+      - YAMA_EVENT_BUS=/tmp/yama-event.sock
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - yama
+
+networks:
+  yama:
+    driver: bridge
+
+volumes:
+  yama-models:
+    driver: local
+  yama-workspace:
+    driver: local

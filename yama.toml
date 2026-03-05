@@ -1,0 +1,129 @@
+# Yama Runtime Configuration
+# This file configures the Yama compositor and its services at runtime.
+
+[compositor]
+# Backend to use: "drm" for native, "winit" for development
+backend = "drm"
+# Render API: "wgpu" (cross-platform) or "vulkan" (direct)
+renderer = "wgpu"
+# Target frame rate
+fps = 60
+
+[event_bus]
+# WebSocket server for external clients
+websocket_bind = "0.0.0.0:8765"
+# Unix socket for container IPC
+unix_socket = "/tmp/yama-event.sock"
+# Maximum message size in bytes
+max_message_size = 16_777_216  # 16MB
+
+[orchestrator]
+# Container runtime: "docker" or "podman"
+runtime = "docker"
+# Health check interval in seconds
+health_interval = 5
+# Restart policy: "always", "on-failure", "never"
+restart_policy = "on-failure"
+# Maximum restart attempts
+max_restarts = 3
+
+[video]
+# Default video sources
+[[video.sources]]
+name = "EAGLE-1"
+url = "rtsp://192.168.1.100:554/stream1"
+enabled = true
+
+[[video.sources]]
+name = "EAGLE-2"
+url = "rtsp://192.168.1.101:554/stream1"
+enabled = false
+
+[video.decode]
+# Hardware decoder preference (platform-specific)
+# Apple: "videotoolbox", Jetson: "nvdec"
+hw_decoder = "auto"
+# Output format
+format = "nv12"
+# Enable DMA-BUF for zero-copy
+dma_buf = true
+
+[video.ai]
+# Enable YOLO detection overlay
+yolo_enabled = true
+yolo_model = "yolo11n"
+yolo_confidence = 0.5
+
+# Enable VLM analysis
+vlm_enabled = true
+vlm_interval_frames = 30
+
+[agents]
+# Default agent configuration
+
+[[agents.instances]]
+agent_id = "vision-agent"
+enabled = true
+
+[agents.instances.llm]
+# Backend: "ttra", "anthropic", "openai"
+backend = "anthropic"
+model = "claude-sonnet-4-20250514"
+temperature = 0.7
+max_tokens = 4096
+
+[agents.instances.context]
+max_tokens = 100_000
+overflow_strategy = "sliding_window"
+
+[agents.instances.tools]
+# Enable specific tools
+enabled = ["get_current_frame", "get_detections", "search_history"]
+
+[agents.instances.skills]
+# Enable specific skills
+enabled = ["video-analysis"]
+
+[services]
+# Service definitions for the orchestrator
+
+[[services.definitions]]
+name = "video"
+image = "yama-video-${PLATFORM}:latest"
+gpu_required = true
+health_endpoint = "/health"
+socket = "/tmp/yama-video.sock"
+
+[[services.definitions]]
+name = "inference"
+image = "yama-inference-${PLATFORM}:latest"
+gpu_required = true
+health_endpoint = "/health"
+socket = "/tmp/yama-inference.sock"
+
+[[services.definitions]]
+name = "agent"
+image = "yama-agent:latest"
+gpu_required = false
+health_endpoint = "/health"
+socket = "/tmp/yama-agent.sock"
+
+[ui]
+# UI configuration
+theme = "dark"
+panel_layout = "default"
+show_status_bar = true
+show_detection_boxes = true
+show_confidence_labels = true
+
+[logging]
+# Log level: "trace", "debug", "info", "warn", "error"
+level = "info"
+# Log format: "pretty", "json", "compact"
+format = "pretty"
+# Log to file
+file = "/var/log/yama/yama.log"
+# Rotate logs
+rotate = true
+max_size_mb = 100
+max_files = 5

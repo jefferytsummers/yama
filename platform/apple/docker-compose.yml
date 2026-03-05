@@ -1,0 +1,142 @@
+# Yama Docker Compose - Apple Silicon
+# Run platform services for development and production
+
+version: "3.8"
+
+services:
+  # Video processing service (GStreamer + VideoToolbox)
+  video:
+    build:
+      context: ../..
+      dockerfile: platform/apple/video/Dockerfile
+    container_name: yama-video-apple
+    restart: unless-stopped
+    volumes:
+      # Event bus socket
+      - /tmp/yama-event.sock:/tmp/yama-event.sock
+      # Video socket for frame sharing
+      - /tmp/yama-video.sock:/tmp/yama-video.sock
+    devices:
+      # GPU access for VideoToolbox
+      - /dev/dri:/dev/dri
+    environment:
+      - RUST_LOG=info
+      - GST_DEBUG=2
+      - YAMA_EVENT_BUS=/tmp/yama-event.sock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - yama
+
+  # Inference service (TTRA/llama.cpp + Metal)
+  inference:
+    build:
+      context: ../..
+      dockerfile: platform/apple/inference/Dockerfile
+    container_name: yama-inference-apple
+    restart: unless-stopped
+    volumes:
+      # Event bus socket
+      - /tmp/yama-event.sock:/tmp/yama-event.sock
+      # Model storage
+      - yama-models:/app/models
+    devices:
+      # GPU access for Metal
+      - /dev/dri:/dev/dri
+    environment:
+      - RUST_LOG=info
+      - YAMA_EVENT_BUS=/tmp/yama-event.sock
+      - MODEL_PATH=/app/models
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
+    networks:
+      - yama
+
+  # Agent runtime service
+  agent:
+    build:
+      context: ../..
+      dockerfile: containers/agent/Dockerfile
+    container_name: yama-agent
+    restart: unless-stopped
+    volumes:
+      # Event bus socket
+      - /tmp/yama-event.sock:/tmp/yama-event.sock
+      # Agent configuration and skills
+      - ../../shared/skills:/app/skills:ro
+    environment:
+      - RUST_LOG=info
+      - YAMA_EVENT_BUS=/tmp/yama-event.sock
+    depends_on:
+      inference:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - yama
+
+  # Code executor tool (optional)
+  tool-code-executor:
+    build:
+      context: ../..
+      dockerfile: containers/tools/code-executor/Dockerfile
+    container_name: yama-tool-code-executor
+    restart: unless-stopped
+    profiles:
+      - tools
+    volumes:
+      - /tmp/yama-event.sock:/tmp/yama-event.sock
+      # Workspace for code execution (sandboxed)
+      - yama-workspace:/workspace
+    environment:
+      - RUST_LOG=info
+      - YAMA_EVENT_BUS=/tmp/yama-event.sock
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - yama
+
+  # File system tool (optional)
+  tool-file-system:
+    build:
+      context: ../..
+      dockerfile: containers/tools/file-system/Dockerfile
+    container_name: yama-tool-file-system
+    restart: unless-stopped
+    profiles:
+      - tools
+    volumes:
+      - /tmp/yama-event.sock:/tmp/yama-event.sock
+      - yama-workspace:/workspace
+    environment:
+      - RUST_LOG=info
+      - YAMA_EVENT_BUS=/tmp/yama-event.sock
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - yama
+
+networks:
+  yama:
+    driver: bridge
+
+volumes:
+  yama-models:
+    driver: local
+  yama-workspace:
+    driver: local

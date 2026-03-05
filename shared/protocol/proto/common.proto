@@ -1,0 +1,173 @@
+// Yama Protocol - Common Types
+// These are shared types used across all protocol messages.
+
+syntax = "proto3";
+
+package yama.common;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/any.proto";
+
+// Envelope wraps all messages on the event bus
+message Envelope {
+    // Unique message identifier
+    string message_id = 1;
+    // Topic for pub/sub routing (e.g., "video.frame", "agent.response")
+    string topic = 2;
+    // Source service identifier
+    string source = 3;
+    // Target service identifier (empty for broadcast)
+    string target = 4;
+    // Timestamp when message was created
+    google.protobuf.Timestamp timestamp = 5;
+    // Correlation ID for request/response matching
+    string correlation_id = 6;
+    // Message payload
+    google.protobuf.Any payload = 7;
+    // Message priority (0 = normal, higher = more urgent)
+    int32 priority = 8;
+    // TTL in milliseconds (0 = no expiry)
+    uint32 ttl_ms = 9;
+}
+
+// ServiceInfo describes a service in the system
+message ServiceInfo {
+    string service_id = 1;
+    string name = 2;
+    ServiceType type = 3;
+    ServiceStatus status = 4;
+    string version = 5;
+    google.protobuf.Timestamp started_at = 6;
+    map<string, string> metadata = 7;
+}
+
+enum ServiceType {
+    SERVICE_TYPE_UNSPECIFIED = 0;
+    SERVICE_TYPE_HOST = 1;
+    SERVICE_TYPE_VIDEO = 2;
+    SERVICE_TYPE_INFERENCE = 3;
+    SERVICE_TYPE_AGENT = 4;
+    SERVICE_TYPE_TOOL = 5;
+}
+
+enum ServiceStatus {
+    SERVICE_STATUS_UNSPECIFIED = 0;
+    SERVICE_STATUS_STARTING = 1;
+    SERVICE_STATUS_HEALTHY = 2;
+    SERVICE_STATUS_DEGRADED = 3;
+    SERVICE_STATUS_UNHEALTHY = 4;
+    SERVICE_STATUS_STOPPED = 5;
+}
+
+// HealthCheck messages
+message HealthCheckRequest {
+    string service_id = 1;
+}
+
+message HealthCheckResponse {
+    string service_id = 1;
+    ServiceStatus status = 2;
+    string message = 3;
+    map<string, ComponentHealth> components = 4;
+    google.protobuf.Timestamp checked_at = 5;
+}
+
+message ComponentHealth {
+    string name = 1;
+    bool healthy = 2;
+    string message = 3;
+}
+
+// Error representation
+message Error {
+    ErrorCode code = 1;
+    string message = 2;
+    string details = 3;
+    string source = 4;
+    google.protobuf.Timestamp occurred_at = 5;
+}
+
+enum ErrorCode {
+    ERROR_CODE_UNSPECIFIED = 0;
+    ERROR_CODE_INVALID_REQUEST = 1;
+    ERROR_CODE_NOT_FOUND = 2;
+    ERROR_CODE_PERMISSION_DENIED = 3;
+    ERROR_CODE_RESOURCE_EXHAUSTED = 4;
+    ERROR_CODE_INTERNAL = 5;
+    ERROR_CODE_UNAVAILABLE = 6;
+    ERROR_CODE_TIMEOUT = 7;
+    ERROR_CODE_CANCELLED = 8;
+}
+
+// Result wrapper for responses
+message Result {
+    oneof result {
+        google.protobuf.Any success = 1;
+        Error error = 2;
+    }
+}
+
+// Subscription management
+message Subscribe {
+    string subscriber_id = 1;
+    repeated string topics = 2;
+    // Wildcard support: "video.*" matches "video.frame", "video.metadata"
+    repeated string patterns = 3;
+}
+
+message Unsubscribe {
+    string subscriber_id = 1;
+    repeated string topics = 2;
+    repeated string patterns = 3;
+}
+
+// Video frame metadata (for zero-copy DMA-BUF sharing)
+message VideoFrameMeta {
+    string source_id = 1;
+    uint64 frame_number = 2;
+    google.protobuf.Timestamp pts = 3;
+    uint32 width = 4;
+    uint32 height = 5;
+    PixelFormat format = 6;
+    // DMA-BUF file descriptor (passed out-of-band via Unix socket)
+    int32 dma_buf_fd = 7;
+    // Fallback: shared memory segment name
+    string shm_name = 8;
+    uint64 shm_offset = 9;
+    uint64 shm_size = 10;
+}
+
+enum PixelFormat {
+    PIXEL_FORMAT_UNSPECIFIED = 0;
+    PIXEL_FORMAT_NV12 = 1;
+    PIXEL_FORMAT_I420 = 2;
+    PIXEL_FORMAT_RGBA = 3;
+    PIXEL_FORMAT_BGRA = 4;
+}
+
+// Detection overlay data
+message DetectionResult {
+    string source_id = 1;
+    uint64 frame_number = 2;
+    repeated Detection detections = 3;
+    google.protobuf.Timestamp processed_at = 4;
+    float inference_time_ms = 5;
+}
+
+message Detection {
+    uint32 id = 1;
+    string class_name = 2;
+    float confidence = 3;
+    BoundingBox bbox = 4;
+    // Optional tracking ID for object tracking
+    uint32 track_id = 5;
+    // Optional segmentation mask (DMA-BUF or SHM reference)
+    string mask_ref = 6;
+}
+
+message BoundingBox {
+    float x = 1;      // Top-left X (normalized 0-1)
+    float y = 2;      // Top-left Y (normalized 0-1)
+    float width = 3;  // Width (normalized 0-1)
+    float height = 4; // Height (normalized 0-1)
+}

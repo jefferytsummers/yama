@@ -1,0 +1,73 @@
+[package]
+name = "yama-host-apple"
+version.workspace = true
+edition = "2024"
+license.workspace = true
+description = "Yama host compositor for Apple Silicon (Metal/MoltenVK)"
+
+[[bin]]
+name = "yama"
+path = "src/main.rs"
+
+[dependencies]
+# Internal crates
+yama-protocol = { path = "../../../shared/protocol" }
+yama-platform-traits = { workspace = true }
+yama-agent-sdk = { path = "../../../shared/agent-sdk" }
+yama-container-sdk = { path = "../../../shared/container-sdk" }
+
+# Async runtime
+tokio = { workspace = true }
+futures-util = { workspace = true }
+async-trait = { workspace = true }
+
+# Compositor
+smithay = { workspace = true }
+
+# Graphics
+wgpu = { workspace = true }
+ash = { workspace = true }
+
+# GUI
+egui = { workspace = true }
+egui_dock = { workspace = true }
+eframe = { workspace = true }
+
+# GStreamer
+gstreamer = { workspace = true }
+gstreamer-app = { workspace = true }
+gstreamer-video = { workspace = true }
+
+# Container management
+bollard = { workspace = true }
+
+# Protocol
+prost = { workspace = true }
+bytes = { workspace = true }
+
+# Network
+tokio-tungstenite = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# macOS-specific dependencies
+metal = "0.29"
+cocoa = "0.26"
+core-foundation = "0.10"
+
+[features]
+default = ["metal"]
+metal = []
+moltenvk = []

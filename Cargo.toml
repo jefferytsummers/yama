@@ -1,0 +1,106 @@
+[workspace]
+resolver = "2"
+
+members = [
+    # Shared crates (always included)
+    "shared/protocol",
+    "shared/platform-traits",
+    "shared/agent-sdk",
+    "shared/container-sdk",
+
+    # Platform-agnostic containers
+    "containers/agent",
+    "containers/tools/code-executor",
+    "containers/tools/file-system",
+    "containers/tools/browser",
+]
+
+# Platform-specific members are conditionally included based on sparse-checkout.
+# Only one platform's directories will exist in a given worktree, so these
+# will be auto-discovered by cargo if present.
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/your-org/yama"
+
+[workspace.dependencies]
+# Core
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "2"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+async-trait = "0.1"
+
+# Internal crates
+yama-platform-traits = { path = "shared/platform-traits" }
+
+# Protocol (control plane)
+prost = "0.13"
+prost-types = "0.13"
+tonic = "0.12"
+bytes = "1"
+
+# Network
+tokio-tungstenite = "0.26"
+futures-util = "0.3"
+
+# GStreamer
+gstreamer = "0.23"
+gstreamer-app = "0.23"
+gstreamer-allocators = "0.23"
+gstreamer-video = "0.23"
+
+# Container management
+bollard = "0.18"
+
+# HTTP client (for LLM APIs)
+reqwest = { version = "0.12", features = ["json", "stream"] }
+async-stream = "0.3"
+
+# GUI
+egui = "0.29"
+egui_dock = "0.15"
+eframe = "0.29"
+
+# Compositor (Smithay)
+smithay = "0.3"
+
+# Graphics
+wgpu = "0.20"
+ash = "0.38"
+
+# Configuration
+toml = "0.8"
+config = "0.14"
+
+# Unix-specific
+rustix = { version = "0.38", features = ["fs"] }
+libc = "0.2"
+
+# Testing
+tempfile = "3"
+assert_matches = "1"
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

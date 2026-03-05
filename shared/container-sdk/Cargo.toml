@@ -1,0 +1,32 @@
+[package]
+name = "yama-container-sdk"
+version.workspace = true
+edition = "2024"
+license.workspace = true
+description = "Yama Container SDK - Client utilities for containerized services"
+
+[dependencies]
+# Protocol types
+yama-protocol = { path = "../protocol" }
+
+# Async runtime
+tokio = { workspace = true }
+futures-util = { workspace = true }
+
+# Serialization
+prost = { workspace = true }
+bytes = { workspace = true }
+
+# Network
+tokio-tungstenite = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = { workspace = true }

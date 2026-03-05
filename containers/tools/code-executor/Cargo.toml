@@ -1,0 +1,38 @@
+[package]
+name = "yama-tool-code-executor"
+version.workspace = true
+edition = "2024"
+license.workspace = true
+description = "Yama code execution tool - sandboxed code execution for agents"
+
+[[bin]]
+name = "yama-tool-code-executor"
+path = "src/main.rs"
+
+[dependencies]
+# Internal crates
+yama-protocol = { path = "../../../shared/protocol" }
+yama-container-sdk = { path = "../../../shared/container-sdk" }
+
+# Async runtime
+tokio = { workspace = true, features = ["process"] }
+futures-util = { workspace = true }
+
+# Protocol
+prost = { workspace = true }
+bytes = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Temp files
+tempfile = { workspace = true }

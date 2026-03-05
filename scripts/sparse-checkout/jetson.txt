@@ -1,0 +1,20 @@
+# Yama Sparse Checkout - NVIDIA Jetson
+# This file defines which directories to include in a Jetson worktree
+
+# Root configuration files
+/Cargo.toml
+/Cargo.lock
+/yama.toml
+/.gitignore
+
+# Shared crates (always included)
+/shared/
+
+# Platform-agnostic containers
+/containers/
+
+# Jetson-specific platform code
+/platform/jetson/
+
+# Scripts
+/scripts/

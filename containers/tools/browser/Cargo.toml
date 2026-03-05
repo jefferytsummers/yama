@@ -1,0 +1,44 @@
+[package]
+name = "yama-tool-browser"
+version.workspace = true
+edition = "2024"
+license.workspace = true
+description = "Yama browser tool - web browsing capabilities for agents"
+
+[[bin]]
+name = "yama-tool-browser"
+path = "src/main.rs"
+
+[dependencies]
+# Internal crates
+yama-protocol = { path = "../../../shared/protocol" }
+yama-container-sdk = { path = "../../../shared/container-sdk" }
+
+# Async runtime
+tokio = { workspace = true }
+futures-util = { workspace = true }
+
+# HTTP client
+reqwest = { workspace = true, features = ["cookies"] }
+
+# Protocol
+prost = { workspace = true }
+bytes = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# HTML parsing
+scraper = "0.20"
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# URL handling
+url = "2"

@@ -1,0 +1,258 @@
+// Yama Protocol - Agent Types
+// Messages for LLM agent communication.
+
+syntax = "proto3";
+
+package yama.agent;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+// Agent lifecycle messages
+message AgentConfig {
+    string agent_id = 1;
+    string name = 2;
+    string system_prompt = 3;
+    LlmConfig llm = 4;
+    ContextConfig context = 5;
+    repeated ToolConfig tools = 6;
+    repeated SkillConfig skills = 7;
+    map<string, string> metadata = 8;
+}
+
+message LlmConfig {
+    LlmBackend backend = 1;
+    string model = 2;
+    float temperature = 3;
+    uint32 max_tokens = 4;
+    // Backend-specific configuration
+    map<string, string> options = 5;
+}
+
+enum LlmBackend {
+    LLM_BACKEND_UNSPECIFIED = 0;
+    LLM_BACKEND_TTRA = 1;        // Local TTRA server
+    LLM_BACKEND_ANTHROPIC = 2;   // Anthropic API
+    LLM_BACKEND_OPENAI = 3;      // OpenAI-compatible API
+    LLM_BACKEND_LLAMA_CPP = 4;   // Local llama.cpp
+}
+
+message ContextConfig {
+    uint32 max_tokens = 1;
+    OverflowStrategy overflow_strategy = 2;
+    // How many tokens to keep when truncating
+    uint32 keep_tokens = 3;
+}
+
+enum OverflowStrategy {
+    OVERFLOW_STRATEGY_UNSPECIFIED = 0;
+    OVERFLOW_STRATEGY_SLIDING_WINDOW = 1;
+    OVERFLOW_STRATEGY_SUMMARIZE = 2;
+    OVERFLOW_STRATEGY_TRUNCATE_OLDEST = 3;
+}
+
+message ToolConfig {
+    string name = 1;
+    string description = 2;
+    // JSON Schema for tool parameters
+    string parameters_schema = 3;
+    // Container/service that handles this tool
+    string handler = 4;
+    bool enabled = 5;
+}
+
+message SkillConfig {
+    string name = 1;
+    string description = 2;
+    // Path to SKILL.md file
+    string path = 3;
+    bool enabled = 4;
+}
+
+// Conversation messages
+message ConversationRequest {
+    string agent_id = 1;
+    string connection_id = 2;
+    repeated Message messages = 3;
+    // Optional: override config for this request
+    RequestOptions options = 4;
+}
+
+message RequestOptions {
+    optional float temperature = 1;
+    optional uint32 max_tokens = 2;
+    repeated string enabled_tools = 3;
+    // Stop sequences
+    repeated string stop = 4;
+}
+
+message Message {
+    MessageRole role = 1;
+    oneof content {
+        string text = 2;
+        ToolUse tool_use = 3;
+        ToolResult tool_result = 4;
+        ImageContent image = 5;
+    }
+    google.protobuf.Timestamp timestamp = 6;
+}
+
+enum MessageRole {
+    MESSAGE_ROLE_UNSPECIFIED = 0;
+    MESSAGE_ROLE_SYSTEM = 1;
+    MESSAGE_ROLE_USER = 2;
+    MESSAGE_ROLE_ASSISTANT = 3;
+    MESSAGE_ROLE_TOOL = 4;
+}
+
+message ToolUse {
+    string id = 1;
+    string name = 2;
+    google.protobuf.Struct input = 3;
+}
+
+message ToolResult {
+    string tool_use_id = 1;
+    oneof result {
+        string content = 2;
+        Error error = 3;
+    }
+    bool is_error = 4;
+}
+
+message Error {
+    string type = 1;
+    string message = 2;
+}
+
+message ImageContent {
+    ImageSource source = 1;
+    string media_type = 2;
+}
+
+message ImageSource {
+    oneof source {
+        string base64 = 1;
+        string url = 2;
+        // Reference to a video frame
+        FrameReference frame_ref = 3;
+    }
+}
+
+message FrameReference {
+    string source_id = 1;
+    uint64 frame_number = 2;
+}
+
+// Response messages
+message ConversationResponse {
+    string agent_id = 1;
+    string connection_id = 2;
+    string request_id = 3;
+    ResponseType type = 4;
+    oneof content {
+        TextDelta text_delta = 5;
+        ToolUseStart tool_use_start = 6;
+        ToolUseComplete tool_use_complete = 7;
+        MessageComplete message_complete = 8;
+        ConversationError error = 9;
+    }
+}
+
+enum ResponseType {
+    RESPONSE_TYPE_UNSPECIFIED = 0;
+    RESPONSE_TYPE_TEXT_DELTA = 1;
+    RESPONSE_TYPE_TOOL_USE_START = 2;
+    RESPONSE_TYPE_TOOL_USE_COMPLETE = 3;
+    RESPONSE_TYPE_MESSAGE_COMPLETE = 4;
+    RESPONSE_TYPE_ERROR = 5;
+}
+
+message TextDelta {
+    string text = 1;
+}
+
+message ToolUseStart {
+    string tool_use_id = 1;
+    string tool_name = 2;
+}
+
+message ToolUseComplete {
+    string tool_use_id = 1;
+    google.protobuf.Struct input = 2;
+}
+
+message MessageComplete {
+    StopReason stop_reason = 1;
+    Usage usage = 2;
+}
+
+enum StopReason {
+    STOP_REASON_UNSPECIFIED = 0;
+    STOP_REASON_END_TURN = 1;
+    STOP_REASON_TOOL_USE = 2;
+    STOP_REASON_MAX_TOKENS = 3;
+    STOP_REASON_STOP_SEQUENCE = 4;
+}
+
+message Usage {
+    uint32 input_tokens = 1;
+    uint32 output_tokens = 2;
+    uint32 cache_read_tokens = 3;
+    uint32 cache_write_tokens = 4;
+}
+
+message ConversationError {
+    string type = 1;
+    string message = 2;
+    bool retryable = 3;
+}
+
+// Hook system for tool execution
+message HookEvent {
+    HookType type = 1;
+    string agent_id = 2;
+    string connection_id = 3;
+    ToolUse tool_use = 4;
+    google.protobuf.Timestamp timestamp = 5;
+}
+
+enum HookType {
+    HOOK_TYPE_UNSPECIFIED = 0;
+    HOOK_TYPE_PRE_TOOL_USE = 1;
+    HOOK_TYPE_POST_TOOL_USE = 2;
+    HOOK_TYPE_STOP = 3;
+}
+
+message HookResponse {
+    bool allow = 1;
+    // Optional: modified tool input
+    google.protobuf.Struct modified_input = 2;
+    // Optional: reason for denial
+    string denial_reason = 3;
+}
+
+// Agent management
+message AgentStatus {
+    string agent_id = 1;
+    AgentState state = 2;
+    uint32 active_connections = 3;
+    google.protobuf.Timestamp last_activity = 4;
+    AgentMetrics metrics = 5;
+}
+
+enum AgentState {
+    AGENT_STATE_UNSPECIFIED = 0;
+    AGENT_STATE_IDLE = 1;
+    AGENT_STATE_PROCESSING = 2;
+    AGENT_STATE_WAITING_TOOL = 3;
+    AGENT_STATE_ERROR = 4;
+}
+
+message AgentMetrics {
+    uint64 total_requests = 1;
+    uint64 total_tokens_in = 2;
+    uint64 total_tokens_out = 3;
+    uint64 total_tool_calls = 4;
+    float avg_response_time_ms = 5;
+}
