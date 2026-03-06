@@ -10614,6 +10614,7 @@ dependencies = [
  "axum 0.8.8",
  "bollard",
  "bytes",
+ "clap",
  "cocoa",
  "core-foundation 0.10.1",
  "eframe",
@@ -10631,6 +10632,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-test",
  "tokio-tungstenite 0.26.2",
  "toml 0.8.23",
  "tower 0.5.3",
@@ -10643,6 +10645,8 @@ dependencies = [
  "yama-container-sdk",
  "yama-platform-traits",
  "yama-protocol",
+ "yama-test-harness",
+ "yama-theme",
 ]
 
 [[package]]
@@ -10697,6 +10701,30 @@ dependencies = [
  "serde",
  "serde_json",
  "tonic",
+]
+
+[[package]]
+name = "yama-test-harness"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "futures-util",
+ "parking_lot",
+ "prost",
+ "tempfile",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "yama-protocol",
+]
+
+[[package]]
+name = "yama-theme"
+version = "0.1.0"
+dependencies = [
+ "eframe",
 ]
 
 [[package]]

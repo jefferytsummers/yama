@@ -4,7 +4,7 @@
 //! - Single video file upload and analysis
 //! - Frame extraction and chunking
 //! - Streaming results via event bus
-//! - Mock inference for development
+//! - Swappable backends (mock, event bus, direct)
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -17,8 +17,15 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
+mod backend;
+mod event_bus_backend;
 mod frame_extractor;
-pub use frame_extractor::FrameExtractor;
+mod mock_backend;
+
+pub use backend::InferenceBackend;
+pub use event_bus_backend::{create_event_bus_backend, EventBusBackend};
+pub use frame_extractor::{ExtractionConfig, ExtractedFrame, FrameExtractor, VideoInfo};
+pub use mock_backend::MockBackend;
 
 /// Inference job status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -104,6 +111,17 @@ pub struct VlmModelInfo {
     pub supports_streaming: bool,
 }
 
+/// Backend type for inference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum BackendType {
+    /// Mock backend for development/testing.
+    #[default]
+    Mock,
+    /// Event bus backend for VLM container communication.
+    EventBus,
+}
+
 /// Configuration for the VLM inference service.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct VlmInferenceConfig {
@@ -119,7 +137,10 @@ pub struct VlmInferenceConfig {
     /// Maximum frames to extract per video.
     #[serde(default = "default_max_frames")]
     pub max_frames: u32,
-    /// Enable mock inference (for development).
+    /// Backend type to use.
+    #[serde(default)]
+    pub backend: BackendType,
+    /// Enable mock inference (deprecated, use backend field).
     #[serde(default = "default_mock_enabled")]
     pub mock_enabled: bool,
 }
@@ -151,7 +172,20 @@ impl Default for VlmInferenceConfig {
             max_upload_size: default_max_upload_size(),
             frame_interval_ms: default_frame_interval_ms(),
             max_frames: default_max_frames(),
+            backend: BackendType::Mock,
             mock_enabled: default_mock_enabled(),
+        }
+    }
+}
+
+impl VlmInferenceConfig {
+    /// Get the effective backend type.
+    pub fn effective_backend(&self) -> BackendType {
+        // For backwards compatibility, honor mock_enabled if backend not explicitly set
+        if self.mock_enabled {
+            BackendType::Mock
+        } else {
+            self.backend
         }
     }
 }
@@ -159,27 +193,48 @@ impl Default for VlmInferenceConfig {
 /// VLM Inference Service.
 ///
 /// Manages video uploads, inference jobs, and model interactions.
+/// Uses a pluggable backend for actual inference execution.
 pub struct VlmInferenceService {
     config: VlmInferenceConfig,
     jobs: Arc<RwLock<HashMap<String, InferenceJob>>>,
     uploads: Arc<RwLock<HashMap<String, UploadInfo>>>,
     models: Vec<VlmModelInfo>,
+    backend: Arc<dyn InferenceBackend>,
 }
 
 impl VlmInferenceService {
-    /// Create a new VLM inference service.
+    /// Create a new VLM inference service with the default backend.
     pub async fn new(config: VlmInferenceConfig) -> Result<Self> {
+        let backend: Arc<dyn InferenceBackend> = match config.effective_backend() {
+            BackendType::Mock => {
+                info!("Using mock inference backend");
+                Arc::new(MockBackend::new())
+            }
+            BackendType::EventBus => {
+                info!("Using event bus inference backend");
+                Arc::new(create_event_bus_backend(&config).await?)
+            }
+        };
+
+        Self::with_backend(config, backend).await
+    }
+
+    /// Create a new VLM inference service with a specific backend.
+    pub async fn with_backend(
+        config: VlmInferenceConfig,
+        backend: Arc<dyn InferenceBackend>,
+    ) -> Result<Self> {
         // Ensure upload directory exists
         tokio::fs::create_dir_all(&config.upload_dir)
             .await
             .with_context(|| format!("Failed to create upload dir: {:?}", config.upload_dir))?;
 
         info!(
-            "VLM inference service initialized (mock={})",
-            config.mock_enabled
+            "VLM inference service initialized (backend={})",
+            backend.name()
         );
 
-        // Available models (mock for now)
+        // Available models
         let models = vec![
             VlmModelInfo {
                 id: "vlm-default".to_string(),
@@ -204,17 +259,28 @@ impl VlmInferenceService {
             },
         ];
 
+        // Warm up the backend
+        if let Err(e) = backend.warmup().await {
+            warn!("Backend warmup failed: {}", e);
+        }
+
         Ok(Self {
             config,
             jobs: Arc::new(RwLock::new(HashMap::new())),
             uploads: Arc::new(RwLock::new(HashMap::new())),
             models,
+            backend,
         })
     }
 
     /// Get service configuration.
     pub fn config(&self) -> &VlmInferenceConfig {
         &self.config
+    }
+
+    /// Get the backend name.
+    pub fn backend_name(&self) -> &'static str {
+        self.backend.name()
     }
 
     /// List available VLM models.
@@ -249,6 +315,12 @@ impl VlmInferenceService {
     pub async fn get_job(&self, job_id: &str) -> Option<InferenceJob> {
         let jobs = self.jobs.read().await;
         jobs.get(job_id).cloned()
+    }
+
+    /// List all jobs.
+    pub async fn list_jobs(&self) -> Vec<InferenceJob> {
+        let jobs = self.jobs.read().await;
+        jobs.values().cloned().collect()
     }
 
     /// Update job status.
@@ -292,11 +364,7 @@ impl VlmInferenceService {
     }
 
     /// Start inference on a video.
-    pub async fn start_inference(
-        &self,
-        job_id: String,
-        upload_id: String,
-    ) -> Result<()> {
+    pub async fn start_inference(&self, job_id: String, upload_id: String) -> Result<()> {
         // Get upload info
         let upload = self
             .get_upload(&upload_id)
@@ -317,11 +385,11 @@ impl VlmInferenceService {
 
         // Clone what we need for the async task
         let jobs = self.jobs.clone();
-        let config = self.config.clone();
+        let backend = self.backend.clone();
 
         // Spawn the inference task
         tokio::spawn(async move {
-            if let Err(e) = run_mock_inference(jobs, job_id.clone(), job, config).await {
+            if let Err(e) = backend.run_inference(jobs, job_id.clone(), job).await {
                 error!("Inference failed for job {}: {}", job_id, e);
             }
         });
@@ -329,142 +397,50 @@ impl VlmInferenceService {
         Ok(())
     }
 
-    /// Clean up old uploads and jobs.
-    pub async fn cleanup(&self, max_age: Duration) {
-        // TODO: Implement cleanup of old files and completed jobs
-        debug!("Cleanup triggered with max_age: {:?}", max_age);
-    }
-}
+    /// Run inference synchronously (for headless mode).
+    pub async fn run_inference_sync(&self, job_id: &str, upload_id: &str) -> Result<InferenceJob> {
+        // Get upload info
+        let upload = self
+            .get_upload(upload_id)
+            .await
+            .context("Upload not found")?;
 
-/// Run mock inference (simulates VLM processing).
-async fn run_mock_inference(
-    jobs: Arc<RwLock<HashMap<String, InferenceJob>>>,
-    job_id: String,
-    job: InferenceJob,
-    _config: VlmInferenceConfig,
-) -> Result<()> {
-    info!("Starting mock inference for job {}", job_id);
-
-    // Simulate frame extraction
-    let total_frames = 10u64; // Mock: 10 frames
-
-    // Update to extracting status
-    {
-        let mut jobs_guard = jobs.write().await;
-        if let Some(j) = jobs_guard.get_mut(&job_id) {
-            j.status = JobStatus::Extracting;
-            j.total_frames = total_frames;
-        }
-    }
-
-    // Simulate extraction delay
-    tokio::time::sleep(Duration::from_millis(500)).await;
-
-    // Update to inferring status
-    {
-        let mut jobs_guard = jobs.write().await;
-        if let Some(j) = jobs_guard.get_mut(&job_id) {
-            j.status = JobStatus::Inferring;
-        }
-    }
-
-    // Mock inference responses based on the prompt
-    let mock_responses = generate_mock_responses(&job.prompt);
-
-    for (i, response) in mock_responses.iter().enumerate() {
-        // Simulate processing time (100-300ms per frame)
-        let delay = 150 + (i as u64 * 20);
-        tokio::time::sleep(Duration::from_millis(delay)).await;
-
-        let chunk = InferenceChunk {
-            frame_number: i as u64 + 1,
-            timestamp_ms: (i as u64 + 1) * 1000,
-            text: response.clone(),
-        };
-
-        // Update job progress
+        // Update job with video path
         {
-            let mut jobs_guard = jobs.write().await;
-            if let Some(j) = jobs_guard.get_mut(&job_id) {
-                j.current_frame = i as u64 + 1;
-                j.progress_percent = ((i + 1) as f32 / mock_responses.len() as f32) * 100.0;
-                j.results.push(chunk);
+            let mut jobs = self.jobs.write().await;
+            if let Some(job) = jobs.get_mut(job_id) {
+                job.video_path = Some(upload.path.clone());
+                job.status = JobStatus::Extracting;
             }
         }
 
-        debug!("Job {} progress: {}/{}", job_id, i + 1, mock_responses.len());
+        // Get job info
+        let job = self.get_job(job_id).await.context("Job not found")?;
+
+        // Run inference synchronously
+        self.backend
+            .run_inference(self.jobs.clone(), job_id.to_string(), job)
+            .await?;
+
+        // Return the completed job
+        self.get_job(job_id).await.context("Job disappeared")
     }
 
-    // Mark as completed
-    {
-        let mut jobs_guard = jobs.write().await;
-        if let Some(j) = jobs_guard.get_mut(&job_id) {
-            j.status = JobStatus::Completed;
-            j.progress_percent = 100.0;
-        }
+    /// Clean up old uploads and jobs.
+    pub async fn cleanup(&self, max_age: Duration) {
+        debug!("Cleanup triggered with max_age: {:?}", max_age);
+        // TODO: Implement cleanup of old files and completed jobs
     }
 
-    info!("Mock inference completed for job {}", job_id);
-    Ok(())
-}
+    /// Delete a job.
+    pub async fn delete_job(&self, job_id: &str) -> bool {
+        let mut jobs = self.jobs.write().await;
+        jobs.remove(job_id).is_some()
+    }
 
-/// Generate mock responses based on the prompt.
-fn generate_mock_responses(prompt: &str) -> Vec<String> {
-    let prompt_lower = prompt.to_lowercase();
-
-    if prompt_lower.contains("person") || prompt_lower.contains("people") {
-        vec![
-            "Frame begins with an empty scene. Natural lighting suggests daytime indoor setting.".to_string(),
-            "A person enters the frame from the left side, walking at a normal pace.".to_string(),
-            "The individual appears to be an adult, wearing casual attire.".to_string(),
-            "They pause momentarily, appearing to look at something off-camera.".to_string(),
-            "Movement continues toward the center of the frame.".to_string(),
-            "The person reaches for an object on a nearby surface.".to_string(),
-            "They pick up what appears to be a document or tablet device.".to_string(),
-            "Brief examination of the item, turning it in their hands.".to_string(),
-            "The person turns and begins walking toward the right side of frame.".to_string(),
-            "Scene ends as the subject exits the visible area.".to_string(),
-        ]
-    } else if prompt_lower.contains("motion") || prompt_lower.contains("movement") {
-        vec![
-            "Initial frame shows static background with no significant motion.".to_string(),
-            "Subtle movement detected in the upper-left quadrant.".to_string(),
-            "Motion increases - appears to be an object entering the scene.".to_string(),
-            "Primary motion vector: left to right, moderate velocity.".to_string(),
-            "Secondary motion detected: slight camera shake or vibration.".to_string(),
-            "Movement continues along predicted trajectory.".to_string(),
-            "Motion velocity decreases, subject appears to be stopping.".to_string(),
-            "Brief pause in primary motion, ambient movement continues.".to_string(),
-            "New motion vector detected: stationary to rightward movement.".to_string(),
-            "Motion exits frame boundary, scene returns to baseline.".to_string(),
-        ]
-    } else if prompt_lower.contains("describe") || prompt_lower.contains("summary") {
-        vec![
-            "Opening: Indoor environment with modern furnishings visible.".to_string(),
-            "Lighting analysis: Even artificial lighting, approximately 5000K color temperature.".to_string(),
-            "Background elements: Wall-mounted display, potted plant, minimal decor.".to_string(),
-            "Floor surface appears to be light-colored hardwood or laminate.".to_string(),
-            "Mid-frame: Activity begins with subject entry from off-screen.".to_string(),
-            "Subject interaction with environment - reaching and grasping motions.".to_string(),
-            "Spatial relationships: Subject maintains central frame position.".to_string(),
-            "Temporal progression: Sequence spans approximately 10 seconds.".to_string(),
-            "Notable events: Object manipulation, directional changes.".to_string(),
-            "Conclusion: Subject exits, scene returns to initial state.".to_string(),
-        ]
-    } else {
-        // Default generic responses
-        vec![
-            "Video analysis initiated. Processing first segment.".to_string(),
-            "Scene establishes with clear visual elements.".to_string(),
-            "Activity detected within the frame boundaries.".to_string(),
-            "Continuing analysis of visual content.".to_string(),
-            "Notable elements identified in current segment.".to_string(),
-            "Temporal progression indicates structured sequence.".to_string(),
-            "Visual patterns consistent with previous observations.".to_string(),
-            "Analyzing contextual relationships between elements.".to_string(),
-            "Processing final segments of video content.".to_string(),
-            format!("Analysis complete. Prompt context: '{}'", prompt),
-        ]
+    /// Check if the backend is ready.
+    pub async fn is_ready(&self) -> bool {
+        self.backend.is_ready().await
     }
 }
 
@@ -497,5 +473,22 @@ mod tests {
         let models = service.list_models();
         assert!(!models.is_empty());
         assert!(models.iter().any(|m| m.id == "vlm-default"));
+    }
+
+    #[tokio::test]
+    async fn test_backend_name() {
+        let config = VlmInferenceConfig::default();
+        let service = VlmInferenceService::new(config).await.unwrap();
+        assert_eq!(service.backend_name(), "mock");
+    }
+
+    #[tokio::test]
+    async fn test_with_custom_backend() {
+        let config = VlmInferenceConfig::default();
+        let backend: Arc<dyn InferenceBackend> = Arc::new(MockBackend::with_delay(1));
+        let service = VlmInferenceService::with_backend(config, backend)
+            .await
+            .unwrap();
+        assert_eq!(service.backend_name(), "mock");
     }
 }
