@@ -1,0 +1,60 @@
+# Yama VLM Container Configuration
+
+[model]
+# HuggingFace model ID (downloaded automatically)
+model_id = "Qwen/Qwen2.5-VL-7B-Instruct"
+
+# Or specify a local path instead:
+# model_path = "/app/models/Qwen2.5-VL-7B"
+
+# In-situ quantization for memory efficiency
+# Options: Q4K, Q8_0, F16, BF16
+isq = "Q4K"
+
+# Maximum context length
+max_context = 4096
+
+# Default generation temperature
+temperature = 0.7
+
+# Default max tokens for generation
+max_tokens = 512
+
+# Device to run inference on: "metal", "cuda", "cpu"
+device = "metal"
+
+[live_stream]
+# Enable live video stream analysis
+enabled = true
+
+# Sampling interval in milliseconds
+# Higher values = less frequent analysis, lower GPU usage
+sample_interval_ms = 1000
+
+# Default prompt for live analysis
+default_prompt = "Describe what you see in this frame. Focus on any people, vehicles, or notable activities."
+
+# Maximum concurrent video sources to analyze
+max_concurrent_sources = 4
+
+# Auto-start analysis for new video sources
+auto_start = false
+
+# Specific sources to auto-start (if auto_start is false)
+# auto_start_sources = ["camera-1", "camera-2"]
+
+[batch]
+# Maximum concurrent batch processing jobs
+max_concurrent_jobs = 2
+
+# Default frame sampling interval (every N frames)
+default_sample_interval_frames = 30
+
+# Temporary directory for frame extraction
+# temp_dir = "/tmp/yama-vlm"
+
+# Maximum frames to process per video (0 = unlimited)
+max_frames_per_video = 100
+
+# Generate video summaries after processing
+generate_summaries = true

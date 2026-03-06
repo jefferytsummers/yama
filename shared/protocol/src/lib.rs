@@ -51,6 +51,11 @@ pub mod system {
     include!(concat!(env!("OUT_DIR"), "/yama.system.rs"));
 }
 
+/// VLM (Vision Language Model) types.
+pub mod vlm {
+    include!(concat!(env!("OUT_DIR"), "/yama.vlm.rs"));
+}
+
 /// Re-export commonly used types at the crate root.
 pub use common::{Envelope, Error, ErrorCode, ServiceInfo, ServiceStatus, ServiceType};
 

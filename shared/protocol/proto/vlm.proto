@@ -1,0 +1,228 @@
+// Yama Protocol - VLM (Vision Language Model) Types
+// Messages for video/image analysis using VLM inference.
+
+syntax = "proto3";
+
+package yama.vlm;
+
+import "google/protobuf/timestamp.proto";
+
+// Request for VLM analysis of a single image or video frame.
+message VlmAnalyzeRequest {
+    // Unique request identifier.
+    string request_id = 1;
+    // Analysis prompt describing what to look for.
+    string prompt = 2;
+    // Image source (one of the following).
+    oneof image_source {
+        // Reference to a video frame via source_id and frame_number.
+        FrameReference frame_ref = 3;
+        // Raw image data (RGB, JPEG, or PNG encoded).
+        bytes image_data = 4;
+        // Shared memory segment name for zero-copy.
+        string shm_name = 5;
+    }
+    // Image dimensions (required for raw data or shm).
+    uint32 width = 6;
+    uint32 height = 7;
+    // Pixel format when using raw data.
+    ImageFormat format = 8;
+    // Optional: maximum tokens for response.
+    uint32 max_tokens = 9;
+    // Optional: temperature for generation.
+    float temperature = 10;
+}
+
+// Reference to a video frame from a specific source.
+message FrameReference {
+    // Video source identifier.
+    string source_id = 1;
+    // Frame number within the stream.
+    uint64 frame_number = 2;
+    // Presentation timestamp.
+    google.protobuf.Timestamp pts = 3;
+}
+
+// Image format for raw image data.
+enum ImageFormat {
+    IMAGE_FORMAT_UNSPECIFIED = 0;
+    IMAGE_FORMAT_RGB = 1;
+    IMAGE_FORMAT_RGBA = 2;
+    IMAGE_FORMAT_BGRA = 3;
+    IMAGE_FORMAT_NV12 = 4;
+    IMAGE_FORMAT_I420 = 5;
+    IMAGE_FORMAT_JPEG = 6;
+    IMAGE_FORMAT_PNG = 7;
+}
+
+// Response from VLM analysis.
+message VlmAnalyzeResponse {
+    // Request ID this response corresponds to.
+    string request_id = 1;
+    // Analysis text from the VLM.
+    string analysis = 2;
+    // Inference time in milliseconds.
+    float inference_time_ms = 3;
+    // Tokens generated.
+    uint32 tokens_generated = 4;
+    // Optional: structured detections extracted from analysis.
+    repeated VlmDetection detections = 5;
+    // Error message if analysis failed.
+    string error = 6;
+    // Timestamp when analysis completed.
+    google.protobuf.Timestamp completed_at = 7;
+}
+
+// Structured detection from VLM analysis.
+message VlmDetection {
+    // Detection label/class.
+    string label = 1;
+    // Confidence score (0.0 - 1.0).
+    float confidence = 2;
+    // Bounding box (normalized coordinates).
+    VlmBoundingBox bbox = 3;
+    // Additional description.
+    string description = 4;
+}
+
+// Bounding box for VLM detections.
+message VlmBoundingBox {
+    // Top-left X coordinate (0.0 - 1.0).
+    float x = 1;
+    // Top-left Y coordinate (0.0 - 1.0).
+    float y = 2;
+    // Width (0.0 - 1.0).
+    float width = 3;
+    // Height (0.0 - 1.0).
+    float height = 4;
+}
+
+// Request for batch processing of video files.
+message VlmBatchRequest {
+    // Unique batch request identifier.
+    string request_id = 1;
+    // Paths to video files to process.
+    repeated string video_paths = 2;
+    // Analysis prompt for all frames.
+    string prompt = 3;
+    // Frame sampling mode.
+    SamplingMode sampling_mode = 4;
+    // Interval between sampled frames (depends on mode).
+    uint32 sample_interval = 5;
+    // Optional: specific timestamps to analyze (in milliseconds).
+    repeated uint64 timestamps_ms = 6;
+    // Maximum frames to process per video (0 = no limit).
+    uint32 max_frames_per_video = 7;
+}
+
+// Frame sampling mode for batch processing.
+enum SamplingMode {
+    // Sample every N frames.
+    SAMPLING_MODE_FRAMES = 0;
+    // Sample every N milliseconds.
+    SAMPLING_MODE_TIME = 1;
+    // Sample only keyframes.
+    SAMPLING_MODE_KEYFRAMES = 2;
+    // Sample at specific timestamps.
+    SAMPLING_MODE_TIMESTAMPS = 3;
+}
+
+// Progress update for batch processing.
+message VlmBatchProgress {
+    // Batch request ID.
+    string request_id = 1;
+    // Current video being processed.
+    string current_video = 2;
+    // Video index (1-based).
+    uint32 video_index = 3;
+    // Total videos in batch.
+    uint32 total_videos = 4;
+    // Frames processed in current video.
+    uint32 frames_processed = 5;
+    // Total frames to process in current video.
+    uint32 total_frames = 6;
+    // Overall progress percentage (0-100).
+    float progress_percent = 7;
+    // Estimated time remaining in seconds.
+    float eta_seconds = 8;
+    // Current status message.
+    string status = 9;
+}
+
+// Result from batch processing.
+message VlmBatchResult {
+    // Batch request ID.
+    string request_id = 1;
+    // Results per video.
+    repeated VideoAnalysisResult video_results = 2;
+    // Total processing time in seconds.
+    float total_time_seconds = 3;
+    // Total frames analyzed.
+    uint32 total_frames_analyzed = 4;
+    // Error message if batch failed.
+    string error = 5;
+    // Timestamp when batch completed.
+    google.protobuf.Timestamp completed_at = 6;
+}
+
+// Analysis results for a single video file.
+message VideoAnalysisResult {
+    // Video file path.
+    string video_path = 1;
+    // Video duration in milliseconds.
+    uint64 duration_ms = 2;
+    // Total frames in video.
+    uint64 total_frames = 3;
+    // Frames that were analyzed.
+    uint32 frames_analyzed = 4;
+    // Per-frame analysis results.
+    repeated FrameAnalysisResult frame_results = 5;
+    // Summary analysis of the entire video.
+    string video_summary = 6;
+    // Error message if this video failed.
+    string error = 7;
+}
+
+// Analysis result for a single frame.
+message FrameAnalysisResult {
+    // Frame number.
+    uint64 frame_number = 1;
+    // Timestamp in milliseconds.
+    uint64 timestamp_ms = 2;
+    // Analysis text.
+    string analysis = 3;
+    // Detections in this frame.
+    repeated VlmDetection detections = 4;
+    // Inference time in milliseconds.
+    float inference_time_ms = 5;
+}
+
+// Live stream configuration for VLM analysis.
+message LiveStreamConfig {
+    // Video source ID to analyze.
+    string source_id = 1;
+    // Enable/disable live analysis.
+    bool enabled = 2;
+    // Sampling interval in milliseconds.
+    uint32 sample_interval_ms = 3;
+    // Analysis prompt.
+    string prompt = 4;
+    // Whether to publish results to event bus.
+    bool publish_results = 5;
+}
+
+// Update live stream configuration.
+message LiveStreamConfigRequest {
+    // Configuration to apply.
+    LiveStreamConfig config = 1;
+}
+
+// Response to configuration update.
+message LiveStreamConfigResponse {
+    // Whether update was successful.
+    bool success = 1;
+    // Current active configurations.
+    repeated LiveStreamConfig active_configs = 2;
+    // Error message if failed.
+    string error = 3;
+}

@@ -10,6 +10,7 @@ members = [
 
     # Platform-agnostic containers
     "containers/agent",
+    "containers/vlm",
     "containers/tools/code-executor",
     "containers/tools/file-system",
     "containers/tools/browser",
@@ -87,6 +88,9 @@ ash = "0.38"
 # Configuration
 toml = "0.8"
 config = "0.14"
+
+# Image processing
+image = "0.25"
 
 # Unix-specific
 rustix = { version = "0.38", features = ["fs"] }

@@ -19,6 +19,7 @@ fn main() -> Result<()> {
             "proto/common.proto",
             "proto/agent.proto",
             "proto/system.proto",
+            "proto/vlm.proto",
         ],
         &["proto/"],
     )?;
