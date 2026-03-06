@@ -45,6 +45,9 @@ cd web && npm run dev           # Web frontend dev server
 
 ## Progressive Disclosure
 
+For frontend design/components:
+@.claude/skills/frontend-design/SKILL.md
+
 For GStreamer video pipelines:
 @.claude/skills/gstreamer/SKILL.md
 
@@ -68,6 +71,8 @@ For code review skill:
 
 ## Deep Reference
 
+- Brand & design system: `docs/brand/BRAND.md`
+- Design tokens: `docs/brand/design-tokens.json`
 - Platform trait APIs: `docs/agent-guides/platform-traits.md`
 - Protocol messages: `docs/agent-guides/protocol-messages.md`
 - Apple specifics: `docs/agent-guides/apple-platform.md`
