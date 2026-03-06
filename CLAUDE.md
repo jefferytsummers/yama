@@ -79,6 +79,30 @@ For code review skill:
 - Jetson specifics: `docs/agent-guides/jetson-platform.md`
 - Web frontend: `docs/agent-guides/web-frontend.md`
 
+## Worktree Isolation
+
+This repo uses git worktrees for parallel feature development. **Each Claude session should operate within a single worktree.**
+
+| Worktree | Branch | Purpose |
+|----------|--------|---------|
+| `yama/` | `dev` | Main development (source of truth) |
+| `yama-components/` | `feature/unified-ui` | UI component development |
+| `yama-tool-prompts/` | `feature/tool-driven-prompts` | Tool/prompt experiments |
+| `yama-vlm-tuning/` | `vlm-tuning` | VLM model tuning |
+
+**Rules:**
+- One Claude session per worktree - never operate across worktrees
+- Check `git worktree list` at session start to confirm location
+- `dev` branch is the integration target - feature branches merge here
+- If work spans worktrees, coordinate via explicit merge/rebase
+
+**Before starting work:**
+```bash
+pwd                    # Confirm you're in the right worktree
+git branch --show-current  # Confirm expected branch
+git status             # Check for uncommitted changes
+```
+
 ## Platform Overrides
 
 Each platform directory has its own CLAUDE.md with non-negotiable constraints:
