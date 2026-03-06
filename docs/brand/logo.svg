@@ -1,0 +1,27 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="magma" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F59E0B"/>
+      <stop offset="100%" style="stop-color:#EF4444"/>
+    </linearGradient>
+    <linearGradient id="magma-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F59E0B;stop-opacity:0.4"/>
+      <stop offset="100%" style="stop-color:#EF4444;stop-opacity:0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background circle (optional, for avatar use) -->
+  <circle cx="256" cy="256" r="240" fill="#0D0D0F"/>
+
+  <!-- Outer glow -->
+  <path d="M256 96L96 400H416L256 96Z" fill="url(#magma-glow)" transform="translate(0, 10)"/>
+
+  <!-- Main mountain (outer) -->
+  <path d="M256 96L96 400H416L256 96Z" fill="url(#magma)"/>
+
+  <!-- Inner mountain (cutout effect) -->
+  <path d="M256 176L160 352H352L256 176Z" fill="#0D0D0F"/>
+
+  <!-- Inner highlight -->
+  <path d="M256 200L176 336H336L256 200Z" fill="#16161A"/>
+</svg>

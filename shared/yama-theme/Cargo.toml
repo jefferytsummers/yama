@@ -1,0 +1,11 @@
+[package]
+name = "yama-theme"
+version = "0.1.0"
+edition = "2024"
+description = "Yama Design System theme for egui applications"
+license = "MIT"
+
+[dependencies]
+eframe = "0.29"
+
+[dev-dependencies]

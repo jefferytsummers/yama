@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "Yama Design Tokens",
+  "version": "1.0.0",
+  "description": "Design tokens for Yama Vision AI Compositor",
+
+  "colors": {
+    "core": {
+      "obsidian": {
+        "value": "#0D0D0F",
+        "rgb": [13, 13, 15],
+        "description": "Primary background"
+      },
+      "basalt": {
+        "value": "#16161A",
+        "rgb": [22, 22, 26],
+        "description": "Secondary background"
+      },
+      "slate": {
+        "value": "#1E1E24",
+        "rgb": [30, 30, 36],
+        "description": "Surface/cards"
+      },
+      "graphite": {
+        "value": "#2A2A32",
+        "rgb": [42, 42, 50],
+        "description": "Elevated surfaces"
+      },
+      "stone": {
+        "value": "#3D3D47",
+        "rgb": [61, 61, 71],
+        "description": "Borders, dividers"
+      }
+    },
+    "accent": {
+      "amber": {
+        "value": "#F59E0B",
+        "rgb": [245, 158, 11],
+        "description": "Primary accent, CTAs"
+      },
+      "ember": {
+        "value": "#EF4444",
+        "rgb": [239, 68, 68],
+        "description": "Errors, destructive"
+      },
+      "jade": {
+        "value": "#10B981",
+        "rgb": [16, 185, 129],
+        "description": "Success, running"
+      },
+      "azure": {
+        "value": "#3B82F6",
+        "rgb": [59, 130, 246],
+        "description": "Info, links"
+      },
+      "violet": {
+        "value": "#8B5CF6",
+        "rgb": [139, 92, 246],
+        "description": "AI/inference indicators"
+      }
+    },
+    "text": {
+      "chalk": {
+        "value": "#FAFAFA",
+        "rgb": [250, 250, 250],
+        "description": "Primary text"
+      },
+      "silver": {
+        "value": "#A1A1AA",
+        "rgb": [161, 161, 170],
+        "description": "Secondary text"
+      },
+      "ash": {
+        "value": "#71717A",
+        "rgb": [113, 113, 122],
+        "description": "Muted/disabled text"
+      }
+    },
+    "semantic": {
+      "background": { "ref": "colors.core.obsidian" },
+      "backgroundSecondary": { "ref": "colors.core.basalt" },
+      "surface": { "ref": "colors.core.slate" },
+      "surfaceHover": { "ref": "colors.core.graphite" },
+      "border": { "ref": "colors.core.stone" },
+      "primary": { "ref": "colors.accent.amber" },
+      "error": { "ref": "colors.accent.ember" },
+      "success": { "ref": "colors.accent.jade" },
+      "info": { "ref": "colors.accent.azure" },
+      "inference": { "ref": "colors.accent.violet" },
+      "textPrimary": { "ref": "colors.text.chalk" },
+      "textSecondary": { "ref": "colors.text.silver" },
+      "textMuted": { "ref": "colors.text.ash" }
+    }
+  },
+
+  "typography": {
+    "fontFamily": {
+      "display": "'Geist', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif",
+      "body": "'Geist', 'SF Pro Text', -apple-system, BlinkMacSystemFont, sans-serif",
+      "mono": "'Geist Mono', 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace"
+    },
+    "fontSize": {
+      "display": "32px",
+      "h1": "24px",
+      "h2": "20px",
+      "h3": "16px",
+      "body": "14px",
+      "small": "12px",
+      "tiny": "10px"
+    },
+    "fontWeight": {
+      "regular": 400,
+      "medium": 500,
+      "semibold": 600
+    },
+    "lineHeight": {
+      "tight": 1.2,
+      "normal": 1.4,
+      "relaxed": 1.5
+    }
+  },
+
+  "spacing": {
+    "1": "4px",
+    "2": "8px",
+    "3": "12px",
+    "4": "16px",
+    "5": "20px",
+    "6": "24px",
+    "8": "32px",
+    "10": "40px",
+    "12": "48px"
+  },
+
+  "borderRadius": {
+    "sm": "4px",
+    "md": "6px",
+    "lg": "8px",
+    "xl": "12px",
+    "full": "9999px"
+  },
+
+  "shadows": {
+    "subtle": "0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2)",
+    "medium": "0 4px 6px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3)",
+    "glow": "0 0 0 2px rgba(245, 158, 11, 0.3)",
+    "aiGlow": "0 0 20px rgba(139, 92, 246, 0.4)"
+  },
+
+  "motion": {
+    "duration": {
+      "fast": "100ms",
+      "normal": "200ms",
+      "slow": "300ms",
+      "deliberate": "500ms"
+    },
+    "easing": {
+      "default": "ease-in-out",
+      "in": "ease-in",
+      "out": "ease-out"
+    }
+  }
+}
