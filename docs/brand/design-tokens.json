@@ -2,162 +2,201 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "name": "Yama Design Tokens",
   "version": "1.0.0",
-  "description": "Design tokens for Yama Vision AI Compositor",
+  "description": "Single source of truth for Yama design system - web and native",
+
+  "_platformMapping": {
+    "web": {
+      "file": "web/src/app.css",
+      "colorPrefix": "--color-",
+      "spacingPrefix": "--space-",
+      "radiusPrefix": "--radius-"
+    },
+    "egui": {
+      "file": "shared/yama-theme/src/lib.rs",
+      "colorModule": "colors",
+      "spacingModule": "spacing",
+      "radiusModule": "radius"
+    }
+  },
 
   "colors": {
     "core": {
       "obsidian": {
         "value": "#0D0D0F",
         "rgb": [13, 13, 15],
-        "description": "Primary background"
+        "description": "Primary background",
+        "css": "--color-obsidian",
+        "rust": "OBSIDIAN"
       },
       "basalt": {
         "value": "#16161A",
         "rgb": [22, 22, 26],
-        "description": "Secondary background"
+        "description": "Secondary background",
+        "css": "--color-basalt",
+        "rust": "BASALT"
       },
       "slate": {
         "value": "#1E1E24",
         "rgb": [30, 30, 36],
-        "description": "Surface/cards"
+        "description": "Surface/cards",
+        "css": "--color-slate",
+        "rust": "SLATE"
       },
       "graphite": {
         "value": "#2A2A32",
         "rgb": [42, 42, 50],
-        "description": "Elevated surfaces"
+        "description": "Elevated surfaces",
+        "css": "--color-graphite",
+        "rust": "GRAPHITE"
       },
       "stone": {
         "value": "#3D3D47",
         "rgb": [61, 61, 71],
-        "description": "Borders, dividers"
+        "description": "Borders, dividers",
+        "css": "--color-stone",
+        "rust": "STONE"
       }
     },
     "accent": {
       "amber": {
         "value": "#F59E0B",
         "rgb": [245, 158, 11],
-        "description": "Primary accent, CTAs"
+        "description": "Primary accent, CTAs",
+        "css": "--color-amber",
+        "rust": "AMBER"
       },
       "ember": {
         "value": "#EF4444",
         "rgb": [239, 68, 68],
-        "description": "Errors, destructive"
+        "description": "Errors, destructive",
+        "css": "--color-ember",
+        "rust": "EMBER"
       },
       "jade": {
         "value": "#10B981",
         "rgb": [16, 185, 129],
-        "description": "Success, running"
+        "description": "Success, running",
+        "css": "--color-jade",
+        "rust": "JADE"
       },
       "azure": {
         "value": "#3B82F6",
         "rgb": [59, 130, 246],
-        "description": "Info, links"
+        "description": "Info, links",
+        "css": "--color-azure",
+        "rust": "AZURE"
       },
       "violet": {
         "value": "#8B5CF6",
         "rgb": [139, 92, 246],
-        "description": "AI/inference indicators"
+        "description": "AI/inference indicators",
+        "css": "--color-violet",
+        "rust": "VIOLET"
       }
     },
     "text": {
       "chalk": {
         "value": "#FAFAFA",
         "rgb": [250, 250, 250],
-        "description": "Primary text"
+        "description": "Primary text",
+        "css": "--color-chalk",
+        "rust": "CHALK"
       },
       "silver": {
         "value": "#A1A1AA",
         "rgb": [161, 161, 170],
-        "description": "Secondary text"
+        "description": "Secondary text",
+        "css": "--color-silver",
+        "rust": "SILVER"
       },
       "ash": {
         "value": "#71717A",
         "rgb": [113, 113, 122],
-        "description": "Muted/disabled text"
+        "description": "Muted/disabled text",
+        "css": "--color-ash",
+        "rust": "ASH"
       }
-    },
-    "semantic": {
-      "background": { "ref": "colors.core.obsidian" },
-      "backgroundSecondary": { "ref": "colors.core.basalt" },
-      "surface": { "ref": "colors.core.slate" },
-      "surfaceHover": { "ref": "colors.core.graphite" },
-      "border": { "ref": "colors.core.stone" },
-      "primary": { "ref": "colors.accent.amber" },
-      "error": { "ref": "colors.accent.ember" },
-      "success": { "ref": "colors.accent.jade" },
-      "info": { "ref": "colors.accent.azure" },
-      "inference": { "ref": "colors.accent.violet" },
-      "textPrimary": { "ref": "colors.text.chalk" },
-      "textSecondary": { "ref": "colors.text.silver" },
-      "textMuted": { "ref": "colors.text.ash" }
-    }
-  },
-
-  "typography": {
-    "fontFamily": {
-      "display": "'Geist', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif",
-      "body": "'Geist', 'SF Pro Text', -apple-system, BlinkMacSystemFont, sans-serif",
-      "mono": "'Geist Mono', 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace"
-    },
-    "fontSize": {
-      "display": "32px",
-      "h1": "24px",
-      "h2": "20px",
-      "h3": "16px",
-      "body": "14px",
-      "small": "12px",
-      "tiny": "10px"
-    },
-    "fontWeight": {
-      "regular": 400,
-      "medium": 500,
-      "semibold": 600
-    },
-    "lineHeight": {
-      "tight": 1.2,
-      "normal": 1.4,
-      "relaxed": 1.5
     }
   },
 
   "spacing": {
-    "1": "4px",
-    "2": "8px",
-    "3": "12px",
-    "4": "16px",
-    "5": "20px",
-    "6": "24px",
-    "8": "32px",
-    "10": "40px",
-    "12": "48px"
+    "1": { "value": "4px", "pixels": 4, "css": "--space-1", "rust": "S1" },
+    "2": { "value": "8px", "pixels": 8, "css": "--space-2", "rust": "S2" },
+    "3": { "value": "12px", "pixels": 12, "css": "--space-3", "rust": "S3" },
+    "4": { "value": "16px", "pixels": 16, "css": "--space-4", "rust": "S4" },
+    "5": { "value": "20px", "pixels": 20, "css": "--space-5", "rust": "S5" },
+    "6": { "value": "24px", "pixels": 24, "css": "--space-6", "rust": "S6" },
+    "8": { "value": "32px", "pixels": 32, "css": "--space-8", "rust": "S8" },
+    "10": { "value": "40px", "pixels": 40, "css": "--space-10", "rust": "S10" },
+    "12": { "value": "48px", "pixels": 48, "css": "--space-12", "rust": "S12" }
   },
 
   "borderRadius": {
-    "sm": "4px",
-    "md": "6px",
-    "lg": "8px",
-    "xl": "12px",
-    "full": "9999px"
+    "sm": { "value": "4px", "pixels": 4, "css": "--radius-sm", "rust": "SM" },
+    "md": { "value": "6px", "pixels": 6, "css": "--radius-md", "rust": "MD" },
+    "lg": { "value": "8px", "pixels": 8, "css": "--radius-lg", "rust": "LG" },
+    "xl": { "value": "12px", "pixels": 12, "css": "--radius-xl", "rust": "XL" },
+    "full": { "value": "9999px", "pixels": 9999, "css": "--radius-full", "rust": "FULL" }
   },
 
   "shadows": {
-    "subtle": "0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2)",
-    "medium": "0 4px 6px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3)",
-    "glow": "0 0 0 2px rgba(245, 158, 11, 0.3)",
-    "aiGlow": "0 0 20px rgba(139, 92, 246, 0.4)"
+    "subtle": {
+      "value": "0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2)",
+      "css": "--shadow-subtle"
+    },
+    "medium": {
+      "value": "0 4px 6px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3)",
+      "css": "--shadow-medium"
+    },
+    "glow": {
+      "value": "0 0 0 2px rgba(245, 158, 11, 0.3)",
+      "css": "--shadow-glow"
+    },
+    "glowInference": {
+      "value": "0 0 20px rgba(139, 92, 246, 0.4)",
+      "css": "--shadow-glow-inference"
+    }
   },
 
   "motion": {
     "duration": {
-      "fast": "100ms",
-      "normal": "200ms",
-      "slow": "300ms",
-      "deliberate": "500ms"
+      "fast": { "value": "100ms", "ms": 100, "css": "--duration-fast" },
+      "normal": { "value": "200ms", "ms": 200, "css": "--duration-normal" },
+      "slow": { "value": "300ms", "ms": 300, "css": "--duration-slow" },
+      "deliberate": { "value": "500ms", "ms": 500, "css": "--duration-deliberate" }
+    }
+  },
+
+  "components": {
+    "card": {
+      "background": "slate",
+      "border": "1px solid stone",
+      "radius": "lg",
+      "padding": "4",
+      "hoverBackground": "graphite"
     },
-    "easing": {
-      "default": "ease-in-out",
-      "in": "ease-in",
-      "out": "ease-out"
+    "button": {
+      "primary": {
+        "background": "amber",
+        "text": "obsidian",
+        "radius": "md",
+        "paddingY": "2",
+        "paddingX": "4"
+      },
+      "secondary": {
+        "background": "transparent",
+        "border": "stone",
+        "text": "silver",
+        "radius": "md"
+      }
+    },
+    "status": {
+      "running": { "color": "jade", "glow": true, "pulse": true },
+      "stopped": { "color": "ash", "glow": false, "pulse": false },
+      "starting": { "color": "amber", "glow": false, "pulse": true },
+      "stopping": { "color": "amber", "glow": false, "pulse": true },
+      "error": { "color": "ember", "glow": true, "pulse": false },
+      "inference": { "color": "violet", "glow": true, "pulse": true }
     }
   }
 }
