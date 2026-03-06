@@ -275,3 +275,55 @@ pub async fn list_video_sources(State(_state): State<Arc<AppState>>) -> Json<Vec
         },
     ])
 }
+
+/// Host status response for the console.
+#[derive(Debug, Serialize)]
+pub struct HostStatusResponse {
+    pub version: &'static str,
+    pub platform: &'static str,
+    pub arch: &'static str,
+    pub event_bus: SubsystemStatus,
+    pub http_server: SubsystemStatus,
+    pub orchestrator: SubsystemStatus,
+    pub compositor: SubsystemStatus,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SubsystemStatus {
+    pub name: &'static str,
+    pub status: &'static str,
+    pub details: String,
+}
+
+/// Get host status for console display.
+pub async fn get_status(State(state): State<Arc<AppState>>) -> Json<HostStatusResponse> {
+    let orchestrator = state.orchestrator.read().await;
+    let services = orchestrator.list_services().await;
+    let running_count = services.iter().filter(|(_, s)| matches!(s, ServiceStatus::Running)).count();
+
+    Json(HostStatusResponse {
+        version: env!("CARGO_PKG_VERSION"),
+        platform: std::env::consts::OS,
+        arch: std::env::consts::ARCH,
+        event_bus: SubsystemStatus {
+            name: "Event Bus",
+            status: "running",
+            details: format!("ws://{}", state.config.event_bus.websocket_bind),
+        },
+        http_server: SubsystemStatus {
+            name: "HTTP Server",
+            status: "running",
+            details: format!("http://{}:{}", state.config.http_server.bind, state.config.http_server.port),
+        },
+        orchestrator: SubsystemStatus {
+            name: "Orchestrator",
+            status: "running",
+            details: format!("{}/{} services running", running_count, services.len()),
+        },
+        compositor: SubsystemStatus {
+            name: "Compositor",
+            status: "running",
+            details: format!("{} @ {}fps", state.config.compositor.renderer, state.config.compositor.fps),
+        },
+    })
+}

@@ -20,6 +20,7 @@ use tracing::info;
 use crate::AppState;
 
 mod handlers;
+pub mod inference_handlers;
 mod routes;
 
 /// HTTP server configuration.
@@ -31,6 +32,9 @@ pub struct HttpServerConfig {
     /// Port for the HTTP server.
     #[serde(default = "default_port")]
     pub port: u16,
+    /// Dev server port (Vite).
+    #[serde(default = "default_dev_port")]
+    pub dev_port: u16,
     /// Path to static files (Svelte build output).
     #[serde(default = "default_static_path")]
     pub static_path: PathBuf,
@@ -51,6 +55,10 @@ fn default_static_path() -> PathBuf {
     PathBuf::from("web/build")
 }
 
+fn default_dev_port() -> u16 {
+    5173
+}
+
 fn default_cors_enabled() -> bool {
     true
 }
@@ -60,6 +68,7 @@ impl Default for HttpServerConfig {
         Self {
             bind: default_bind(),
             port: default_port(),
+            dev_port: default_dev_port(),
             static_path: default_static_path(),
             cors_enabled: default_cors_enabled(),
         }

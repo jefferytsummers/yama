@@ -112,6 +112,8 @@ socket = "/tmp/yama-agent.sock"
 # HTTP server for Host UI (System Engineer View)
 bind = "0.0.0.0"
 port = 8080
+# Dev server port (Vite dev mode)
+dev_port = 5173
 # Path to static files (Svelte build output)
 static_path = "web/build"
 # Enable CORS for development

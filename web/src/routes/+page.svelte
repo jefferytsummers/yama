@@ -2,6 +2,7 @@
 	import ServiceCard from '../components/ServiceCard.svelte';
 	import MetricsPanel from '../components/MetricsPanel.svelte';
 	import VideoPlaceholder from '../components/VideoPlaceholder.svelte';
+	import Console from '../components/Console.svelte';
 	import { services, videoSources } from '$lib/stores';
 </script>
 
@@ -10,9 +11,14 @@
 </svelte:head>
 
 <div class="dashboard">
-	<section class="section">
-		<h2>System Overview</h2>
-		<MetricsPanel />
+	<section class="section overview-grid">
+		<div>
+			<h2>System Overview</h2>
+			<MetricsPanel />
+		</div>
+		<div>
+			<Console />
+		</div>
 	</section>
 
 	<section class="section">
@@ -90,5 +96,21 @@
 		text-align: center;
 		background-color: var(--color-surface);
 		border-radius: var(--radius);
+	}
+
+	.overview-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1.5rem;
+	}
+
+	.overview-grid h2 {
+		margin-bottom: 1rem;
+	}
+
+	@media (max-width: 900px) {
+		.overview-grid {
+			grid-template-columns: 1fr;
+		}
 	}
 </style>

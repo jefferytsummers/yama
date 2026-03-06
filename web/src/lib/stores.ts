@@ -3,7 +3,7 @@
  */
 
 import { writable, derived, type Readable } from 'svelte/store';
-import { api, type ServiceInfo, type MetricsResponse, type ConfigResponse, type VideoSourceInfo } from './api';
+import { api, type ServiceInfo, type MetricsResponse, type ConfigResponse, type VideoSourceInfo, type HostStatusResponse } from './api';
 
 // Services store
 function createServicesStore() {
@@ -129,6 +129,36 @@ export const videoSources = createVideoSourcesStore();
 
 // Connection status store
 export const connectionStatus = writable<'connected' | 'disconnected' | 'connecting'>('disconnected');
+
+// Host status store (for console)
+function createHostStatusStore() {
+	const { subscribe, set } = writable<HostStatusResponse | null>(null);
+	let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+	return {
+		subscribe,
+		async refresh() {
+			try {
+				const status = await api.getStatus();
+				set(status);
+			} catch (error) {
+				console.error('Failed to fetch host status:', error);
+			}
+		},
+		startPolling(intervalMs = 2000) {
+			this.refresh();
+			pollInterval = setInterval(() => this.refresh(), intervalMs);
+		},
+		stopPolling() {
+			if (pollInterval) {
+				clearInterval(pollInterval);
+				pollInterval = null;
+			}
+		}
+	};
+}
+
+export const hostStatus = createHostStatusStore();
 
 // Derived store: count of running services
 export const runningServicesCount: Readable<number> = derived(services, ($services) =>

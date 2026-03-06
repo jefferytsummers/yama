@@ -62,6 +62,22 @@ export interface HealthResponse {
 	version: string;
 }
 
+export interface SubsystemStatus {
+	name: string;
+	status: string;
+	details: string;
+}
+
+export interface HostStatusResponse {
+	version: string;
+	platform: string;
+	arch: string;
+	event_bus: SubsystemStatus;
+	http_server: SubsystemStatus;
+	orchestrator: SubsystemStatus;
+	compositor: SubsystemStatus;
+}
+
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
 	const response = await fetch(url, {
 		headers: {
@@ -81,6 +97,10 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
 export const api = {
 	async health(): Promise<HealthResponse> {
 		return fetchJson<HealthResponse>(`${API_BASE}/health`);
+	},
+
+	async getStatus(): Promise<HostStatusResponse> {
+		return fetchJson<HostStatusResponse>(`${API_BASE}/status`);
 	},
 
 	async getServices(): Promise<ServiceInfo[]> {

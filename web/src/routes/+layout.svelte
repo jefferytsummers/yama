@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import '../app.css';
 	import Navbar from '../components/Navbar.svelte';
-	import { services, metrics, config, videoSources, connectionStatus } from '$lib/stores';
+	import { services, metrics, config, videoSources, connectionStatus, hostStatus } from '$lib/stores';
 	import { api } from '$lib/api';
 
 	let { children } = $props();
@@ -19,6 +19,7 @@
 		// Start polling
 		services.startPolling();
 		metrics.startPolling();
+		hostStatus.startPolling();
 
 		// Load initial data
 		config.refresh();
@@ -28,6 +29,7 @@
 	onDestroy(() => {
 		services.stopPolling();
 		metrics.stopPolling();
+		hostStatus.stopPolling();
 	});
 </script>
 
