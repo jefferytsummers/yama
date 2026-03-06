@@ -9,12 +9,17 @@ description = "Yama host compositor for Apple Silicon (Metal/MoltenVK)"
 name = "yama"
 path = "src/main.rs"
 
+[[bin]]
+name = "yama-headless"
+path = "src/bin/headless.rs"
+
 [dependencies]
 # Internal crates
 yama-protocol = { path = "../../../shared/protocol" }
 yama-platform-traits = { workspace = true }
 yama-agent-sdk = { path = "../../../shared/agent-sdk" }
 yama-container-sdk = { path = "../../../shared/container-sdk" }
+yama-theme = { path = "../../../shared/yama-theme" }
 
 # Async runtime
 tokio = { workspace = true }
@@ -55,6 +60,9 @@ tempfile = { workspace = true }
 uuid = { version = "1.11", features = ["v4"] }
 rfd = "0.15"
 
+# CLI parsing (for headless binary)
+clap = { version = "4", features = ["derive"] }
+
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -73,6 +81,10 @@ tracing-subscriber = { workspace = true }
 metal = "0.29"
 cocoa = "0.26"
 core-foundation = "0.10"
+
+[dev-dependencies]
+yama-test-harness = { path = "../../../shared/test-harness" }
+tokio-test = "0.4"
 
 [features]
 default = ["metal"]

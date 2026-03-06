@@ -11,16 +11,20 @@ use tokio::sync::RwLock;
 use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
+// Import theme
+use yama_theme::{colors, radius, spacing, YamaTheme, RichTextExt};
+
 mod compositor;
 mod event_bus;
 mod http_server;
-mod inference;
 mod orchestrator;
 
 use event_bus::EventBus;
 use http_server::HttpServer;
-use inference::{InferenceChunk, JobStatus, VlmInferenceConfig, VlmInferenceService};
 use orchestrator::Orchestrator;
+
+// Use inference module from the library crate
+use yama_host_apple::inference::{self, InferenceChunk, JobStatus, VlmInferenceConfig, VlmInferenceService};
 
 /// Application configuration.
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -260,135 +264,226 @@ impl eframe::App for YamaApp {
             ctx.request_repaint();
         }
 
-        // Color palette
-        let bg_dark = egui::Color32::from_rgb(10, 10, 18);
-        let surface = egui::Color32::from_rgb(15, 52, 96);
-        let primary = egui::Color32::from_rgb(233, 69, 96);
-        let secondary = egui::Color32::from_rgb(83, 52, 131);
-        let success = egui::Color32::from_rgb(0, 210, 106);
-        let text_muted = egui::Color32::from_rgb(160, 160, 160);
+        // Pulsing animation for status indicators
+        let pulse = yama_theme::animation::pulse_alpha(ctx);
 
-        // Top bar
+        // Top bar with gradient accent
         egui::TopBottomPanel::top("top_bar")
-            .frame(egui::Frame::none().fill(egui::Color32::from_rgb(22, 33, 62)))
+            .frame(egui::Frame::none()
+                .fill(colors::BASALT)
+                .inner_margin(egui::Margin::symmetric(spacing::S6, spacing::S3)))
             .show(ctx, |ui| {
-                ui.add_space(8.0);
                 ui.horizontal(|ui| {
-                    ui.add_space(16.0);
-                    ui.heading(egui::RichText::new("Yama").color(egui::Color32::WHITE).strong());
-                    ui.label(egui::RichText::new("Video Analysis").color(text_muted));
+                    // Logo/brand with amber accent
+                    ui.label(egui::RichText::new("◆")
+                        .size(24.0)
+                        .color(colors::AMBER));
+                    ui.add_space(spacing::S2);
+                    ui.heading(egui::RichText::new("Yama")
+                        .color(colors::CHALK)
+                        .strong()
+                        .size(yama_theme::font_size::H2));
+                    ui.label(egui::RichText::new("Video Analysis")
+                        .color(colors::VIOLET)
+                        .size(yama_theme::font_size::BODY));
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add_space(16.0);
                         if self.is_running {
-                            ui.label(egui::RichText::new("Processing...").color(egui::Color32::from_rgb(255, 193, 7)));
+                            // Animated status indicator
+                            let pulse_color = colors::with_alpha(colors::AMBER, (pulse * 255.0) as u8);
+                            ui.label(egui::RichText::new("● Processing...")
+                                .color(pulse_color)
+                                .strong());
                         } else if self.job_status == Some(JobStatus::Completed) {
-                            ui.label(egui::RichText::new("Complete").color(success));
+                            ui.label(egui::RichText::new("✓ Complete")
+                                .color(colors::JADE)
+                                .strong());
                         }
                     });
                 });
-                ui.add_space(8.0);
             });
 
-        // Main content area - split layout
-        egui::CentralPanel::default()
-            .frame(egui::Frame::none().fill(bg_dark))
+        // Bottom status bar with accent line
+        egui::TopBottomPanel::bottom("status_bar")
+            .frame(egui::Frame::none()
+                .fill(colors::BASALT)
+                .inner_margin(egui::Margin::symmetric(spacing::S6, spacing::S2)))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    // Left side - Video preview and controls (60%)
-                    let left_width = ui.available_width() * 0.6;
+                    // Accent indicator
+                    let (dot_rect, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
+                    ui.painter().circle_filled(dot_rect.center(), 4.0, colors::JADE);
+
+                    ui.label(egui::RichText::new("Ready")
+                        .color(colors::TEXT_MUTED)
+                        .size(yama_theme::font_size::SMALL));
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(egui::RichText::new("Mock Backend")
+                            .color(colors::AZURE)
+                            .size(yama_theme::font_size::SMALL));
+                    });
+                });
+            });
+
+        // Main content area with proper margins
+        egui::CentralPanel::default()
+            .frame(egui::Frame::none()
+                .fill(colors::OBSIDIAN)
+                .inner_margin(egui::Margin::same(spacing::S6)))
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    // Left side - Video preview (55%)
+                    let left_width = ui.available_width() * 0.55;
                     ui.allocate_ui(egui::vec2(left_width, ui.available_height()), |ui| {
                         ui.vertical(|ui| {
-                            ui.add_space(16.0);
+                            // Video preview card
+                            let preview_height = (ui.available_height() - 70.0).max(200.0);
+                            let preview_width = left_width - spacing::S4;
 
-                            // Video preview area
-                            let preview_height = (ui.available_height() - 80.0).max(200.0);
-                            let preview_width = (left_width - 32.0).max(100.0);
-                            let preview_rect = ui.allocate_space(egui::vec2(preview_width, preview_height)).1;
-
-                            // Draw video preview background
-                            ui.painter().rect_filled(
-                                preview_rect,
-                                8.0,
-                                egui::Color32::from_rgb(10, 10, 18),
-                            );
-                            ui.painter().rect_stroke(
-                                preview_rect,
-                                8.0,
-                                egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 50, 70)),
-                            );
-
-                            if self.selected_video.is_some() {
-                                // Show filename
-                                ui.painter().text(
-                                    preview_rect.left_top() + egui::Vec2::new(12.0, 12.0),
-                                    egui::Align2::LEFT_TOP,
-                                    &self.video_filename,
-                                    egui::FontId::monospace(12.0),
-                                    egui::Color32::WHITE,
-                                );
-
-                                // Progress overlay if running
-                                if self.is_running || self.job_status == Some(JobStatus::Completed) {
-                                    let progress_rect = egui::Rect::from_min_size(
-                                        preview_rect.left_bottom() - egui::Vec2::new(0.0, 40.0),
-                                        egui::vec2(preview_rect.width(), 40.0),
-                                    );
-
-                                    // Background gradient
-                                    ui.painter().rect_filled(
-                                        progress_rect,
-                                        0.0,
-                                        egui::Color32::from_rgba_unmultiplied(0, 0, 0, 200),
-                                    );
-
-                                    // Progress bar
-                                    let bar_rect = egui::Rect::from_min_size(
-                                        progress_rect.left_top() + egui::Vec2::new(16.0, 10.0),
-                                        egui::vec2(progress_rect.width() - 32.0, 6.0),
-                                    );
-                                    ui.painter().rect_filled(bar_rect, 3.0, egui::Color32::from_rgb(40, 40, 50));
-
-                                    let filled_width = bar_rect.width() * (self.progress_percent / 100.0);
-                                    let filled_rect = egui::Rect::from_min_size(
-                                        bar_rect.left_top(),
-                                        egui::vec2(filled_width, bar_rect.height()),
-                                    );
-                                    ui.painter().rect_filled(filled_rect, 3.0, primary);
-
-                                    // Progress text
-                                    let progress_text = format!(
-                                        "{:.0}%  Frame {}/{}",
-                                        self.progress_percent, self.current_frame, self.total_frames
-                                    );
-                                    ui.painter().text(
-                                        progress_rect.left_bottom() - egui::Vec2::new(-16.0, 8.0),
-                                        egui::Align2::LEFT_BOTTOM,
-                                        progress_text,
-                                        egui::FontId::monospace(11.0),
-                                        text_muted,
-                                    );
-                                }
+                            // Card with violet accent border when video loaded
+                            let border_color = if self.selected_video.is_some() {
+                                colors::VIOLET
                             } else {
-                                // Empty state - prompt to select video
-                                ui.painter().text(
-                                    preview_rect.center(),
-                                    egui::Align2::CENTER_CENTER,
-                                    "Select a video file to analyze",
-                                    egui::FontId::proportional(16.0),
-                                    text_muted,
-                                );
-                            }
+                                colors::STONE
+                            };
 
-                            ui.add_space(16.0);
+                            egui::Frame::none()
+                                .fill(colors::SLATE)
+                                .stroke(egui::Stroke::new(2.0, border_color))
+                                .rounding(egui::Rounding::same(radius::XL))
+                                .inner_margin(spacing::S1)
+                                .show(ui, |ui| {
+                                    let (preview_rect, _) = ui.allocate_exact_size(
+                                        egui::vec2(preview_width - spacing::S2, preview_height),
+                                        egui::Sense::hover()
+                                    );
 
-                            // File picker button
+                                    // Inner dark area
+                                    ui.painter().rect_filled(
+                                        preview_rect,
+                                        radius::LG,
+                                        colors::OBSIDIAN,
+                                    );
+
+                                    if self.selected_video.is_some() {
+                                        // Filename badge at top
+                                        let badge_rect = egui::Rect::from_min_size(
+                                            preview_rect.left_top() + egui::Vec2::new(spacing::S3, spacing::S3),
+                                            egui::vec2(200.0, 24.0),
+                                        );
+                                        ui.painter().rect_filled(
+                                            badge_rect,
+                                            radius::SM,
+                                            colors::with_alpha(colors::VIOLET, 40),
+                                        );
+                                        ui.painter().text(
+                                            badge_rect.left_center() + egui::Vec2::new(spacing::S2, 0.0),
+                                            egui::Align2::LEFT_CENTER,
+                                            &self.video_filename,
+                                            egui::FontId::monospace(yama_theme::font_size::SMALL),
+                                            colors::VIOLET,
+                                        );
+
+                                        // Center icon
+                                        ui.painter().text(
+                                            preview_rect.center(),
+                                            egui::Align2::CENTER_CENTER,
+                                            "▶",
+                                            egui::FontId::proportional(48.0),
+                                            colors::with_alpha(colors::AMBER, 100),
+                                        );
+
+                                        // Progress overlay if running
+                                        if self.is_running || self.job_status == Some(JobStatus::Completed) {
+                                            let progress_rect = egui::Rect::from_min_size(
+                                                preview_rect.left_bottom() - egui::Vec2::new(0.0, 50.0),
+                                                egui::vec2(preview_rect.width(), 50.0),
+                                            );
+
+                                            // Gradient overlay
+                                            ui.painter().rect_filled(
+                                                progress_rect,
+                                                0.0,
+                                                colors::with_alpha(colors::OBSIDIAN, 230),
+                                            );
+
+                                            // Progress bar track
+                                            let bar_rect = egui::Rect::from_min_size(
+                                                progress_rect.left_top() + egui::Vec2::new(spacing::S4, spacing::S3),
+                                                egui::vec2(progress_rect.width() - spacing::S8, 8.0),
+                                            );
+                                            ui.painter().rect_filled(bar_rect, radius::SM, colors::GRAPHITE);
+
+                                            // Progress bar fill with gradient effect
+                                            let filled_width = bar_rect.width() * (self.progress_percent / 100.0);
+                                            if filled_width > 0.0 {
+                                                let filled_rect = egui::Rect::from_min_size(
+                                                    bar_rect.left_top(),
+                                                    egui::vec2(filled_width, bar_rect.height()),
+                                                );
+                                                // Amber to Ember gradient simulation
+                                                let progress_color = if self.progress_percent > 50.0 {
+                                                    colors::EMBER
+                                                } else {
+                                                    colors::AMBER
+                                                };
+                                                ui.painter().rect_filled(filled_rect, radius::SM, progress_color);
+
+                                                // Glow effect
+                                                ui.painter().rect_filled(
+                                                    filled_rect.expand(2.0),
+                                                    radius::MD,
+                                                    colors::with_alpha(progress_color, 30),
+                                                );
+                                            }
+
+                                            // Progress text
+                                            let progress_text = format!(
+                                                "{:.0}%  •  Frame {}/{}",
+                                                self.progress_percent, self.current_frame, self.total_frames
+                                            );
+                                            ui.painter().text(
+                                                progress_rect.left_bottom() - egui::Vec2::new(-spacing::S4, spacing::S2),
+                                                egui::Align2::LEFT_BOTTOM,
+                                                progress_text,
+                                                egui::FontId::monospace(yama_theme::font_size::SMALL),
+                                                colors::CHALK,
+                                            );
+                                        }
+                                    } else {
+                                        // Empty state with styled prompt
+                                        ui.painter().text(
+                                            preview_rect.center() - egui::Vec2::new(0.0, 20.0),
+                                            egui::Align2::CENTER_CENTER,
+                                            "📹",
+                                            egui::FontId::proportional(48.0),
+                                            colors::STONE,
+                                        );
+                                        ui.painter().text(
+                                            preview_rect.center() + egui::Vec2::new(0.0, 30.0),
+                                            egui::Align2::CENTER_CENTER,
+                                            "Select a video to analyze",
+                                            egui::FontId::proportional(yama_theme::font_size::H3),
+                                            colors::TEXT_MUTED,
+                                        );
+                                    }
+                                });
+
+                            ui.add_space(spacing::S4);
+
+                            // Action buttons with accent colors
                             ui.horizontal(|ui| {
-                                ui.add_space(16.0);
+                                // Select Video button - Azure accent
                                 if ui.add_sized(
-                                    [160.0, 36.0],
-                                    egui::Button::new("Select Video...")
-                                        .fill(surface)
+                                    [180.0, 40.0],
+                                    egui::Button::new(
+                                        egui::RichText::new("📁  Select Video...")
+                                            .color(colors::CHALK)
+                                            .size(yama_theme::font_size::BODY)
+                                    )
+                                    .fill(colors::AZURE)
+                                    .rounding(egui::Rounding::same(radius::MD))
                                 ).clicked() && !self.is_running {
                                     if let Some(path) = rfd::FileDialog::new()
                                         .add_filter("Video", &["mp4", "webm", "mov", "avi"])
@@ -404,11 +499,18 @@ impl eframe::App for YamaApp {
                                     }
                                 }
 
+                                ui.add_space(spacing::S2);
+
                                 if self.selected_video.is_some() && !self.is_running {
                                     if ui.add_sized(
-                                        [100.0, 36.0],
-                                        egui::Button::new("Clear")
-                                            .fill(egui::Color32::TRANSPARENT)
+                                        [100.0, 40.0],
+                                        egui::Button::new(
+                                            egui::RichText::new("Clear")
+                                                .color(colors::TEXT_SECONDARY)
+                                        )
+                                        .fill(egui::Color32::TRANSPARENT)
+                                        .stroke(egui::Stroke::new(1.0, colors::STONE))
+                                        .rounding(egui::Rounding::same(radius::MD))
                                     ).clicked() {
                                         self.reset();
                                     }
@@ -417,163 +519,228 @@ impl eframe::App for YamaApp {
                         });
                     });
 
-                    ui.add_space(16.0);
+                    ui.add_space(spacing::S4);
 
-                    // Right side - Controls and results (40%)
+                    // Right side - Controls and results
                     ui.vertical(|ui| {
-                        ui.add_space(16.0);
-
-                        // Control panel
+                        // Control panel with gradient header
                         egui::Frame::none()
-                            .fill(surface)
-                            .rounding(8.0)
-                            .inner_margin(16.0)
+                            .fill(colors::SLATE)
+                            .stroke(egui::Stroke::new(1.0, colors::STONE))
+                            .rounding(egui::Rounding::same(radius::LG))
                             .show(ui, |ui| {
-                                ui.set_width(ui.available_width() - 32.0);
-
-                                // Model selector
-                                ui.label(egui::RichText::new("MODEL").size(10.0).color(text_muted));
-                                ui.add_space(4.0);
-
-                                let models: Vec<String> = self.state.inference_service
-                                    .as_ref()
-                                    .map(|s| s.list_models().iter().map(|m| m.name.clone()).collect())
-                                    .unwrap_or_else(|| vec!["VLM Default".to_string()]);
-
-                                let selected_text = models.get(self.selected_model_index)
-                                    .cloned()
-                                    .unwrap_or_else(|| "Select model".to_string());
-
-                                ui.add_enabled_ui(!self.is_running, |ui| {
-                                    egui::ComboBox::from_id_salt("model_selector")
-                                        .selected_text(&selected_text)
-                                        .width(ui.available_width())
-                                        .show_ui(ui, |ui| {
-                                            for (i, model) in models.iter().enumerate() {
-                                                ui.selectable_value(&mut self.selected_model_index, i, model);
-                                            }
+                                // Header with amber accent
+                                egui::Frame::none()
+                                    .fill(colors::GRAPHITE)
+                                    .rounding(egui::Rounding {
+                                        nw: radius::LG, ne: radius::LG,
+                                        sw: 0.0, se: 0.0,
+                                    })
+                                    .inner_margin(egui::Margin::symmetric(spacing::S4, spacing::S3))
+                                    .show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.label(egui::RichText::new("⚡")
+                                                .size(16.0)
+                                                .color(colors::AMBER));
+                                            ui.label(egui::RichText::new("Inference Settings")
+                                                .color(colors::CHALK)
+                                                .strong()
+                                                .size(yama_theme::font_size::BODY));
                                         });
-                                });
+                                    });
 
-                                ui.add_space(16.0);
+                                ui.add_space(spacing::S3);
 
-                                // Prompt input
-                                ui.label(egui::RichText::new("INSTRUCTIONS").size(10.0).color(text_muted));
-                                ui.add_space(4.0);
+                                // Content padding
+                                egui::Frame::none()
+                                    .inner_margin(egui::Margin::symmetric(spacing::S4, 0.0))
+                                    .show(ui, |ui| {
+                                        ui.set_width(ui.available_width());
 
-                                ui.add_enabled_ui(!self.is_running, |ui| {
-                                    let text_edit = egui::TextEdit::multiline(&mut self.prompt)
-                                        .hint_text("Describe what you want to analyze...\n\nExamples:\n- Describe what happens in this video\n- Identify people and their actions\n- Detect and track motion")
-                                        .desired_rows(6)
-                                        .desired_width(ui.available_width())
-                                        .font(egui::FontId::monospace(13.0));
-                                    ui.add(text_edit);
-                                });
+                                        // Model selector
+                                        ui.label(egui::RichText::new("MODEL")
+                                            .size(yama_theme::font_size::TINY)
+                                            .color(colors::AMBER));
+                                        ui.add_space(spacing::S1);
 
-                                ui.add_space(16.0);
+                                        let models: Vec<String> = self.state.inference_service
+                                            .as_ref()
+                                            .map(|s| s.list_models().iter().map(|m| m.name.clone()).collect())
+                                            .unwrap_or_else(|| vec!["VLM Default".to_string()]);
 
-                                // Run button
-                                let can_run = self.selected_video.is_some()
-                                    && !self.prompt.trim().is_empty()
-                                    && !self.is_running;
+                                        let selected_text = models.get(self.selected_model_index)
+                                            .cloned()
+                                            .unwrap_or_else(|| "Select model".to_string());
 
-                                let button_text = if self.is_running { "Running..." } else { "Run Inference" };
+                                        ui.add_enabled_ui(!self.is_running, |ui| {
+                                            egui::ComboBox::from_id_salt("model_selector")
+                                                .selected_text(&selected_text)
+                                                .width(ui.available_width())
+                                                .show_ui(ui, |ui| {
+                                                    for (i, model) in models.iter().enumerate() {
+                                                        ui.selectable_value(&mut self.selected_model_index, i, model);
+                                                    }
+                                                });
+                                        });
 
-                                if ui.add_sized(
-                                    [ui.available_width(), 40.0],
-                                    egui::Button::new(egui::RichText::new(button_text).size(14.0).strong())
-                                        .fill(if can_run { primary } else { egui::Color32::from_rgb(80, 80, 90) })
-                                ).clicked() && can_run {
-                                    self.start_inference();
-                                }
+                                        ui.add_space(spacing::S4);
 
-                                // Error message
-                                if let Some(err) = &self.error_message {
-                                    ui.add_space(8.0);
-                                    ui.label(egui::RichText::new(err).color(primary).size(12.0));
-                                }
+                                        // Prompt input
+                                        ui.label(egui::RichText::new("INSTRUCTIONS")
+                                            .size(yama_theme::font_size::TINY)
+                                            .color(colors::VIOLET));
+                                        ui.add_space(spacing::S1);
+
+                                        ui.add_enabled_ui(!self.is_running, |ui| {
+                                            let text_edit = egui::TextEdit::multiline(&mut self.prompt)
+                                                .hint_text("What should I analyze?\n\nExamples:\n• Describe what happens\n• Count people and objects\n• Detect motion events")
+                                                .desired_rows(5)
+                                                .desired_width(ui.available_width())
+                                                .font(egui::FontId::proportional(yama_theme::font_size::BODY));
+                                            ui.add(text_edit);
+                                        });
+
+                                        ui.add_space(spacing::S4);
+
+                                        // Run button - prominent with state feedback
+                                        let can_run = self.selected_video.is_some()
+                                            && !self.prompt.trim().is_empty()
+                                            && !self.is_running;
+
+                                        let (button_text, button_color) = if self.is_running {
+                                            ("⟳ Running...", colors::VIOLET)
+                                        } else if !self.selected_video.is_some() {
+                                            ("Select a video first", colors::GRAPHITE)
+                                        } else if self.prompt.trim().is_empty() {
+                                            ("Enter instructions above", colors::GRAPHITE)
+                                        } else {
+                                            ("▶ Run Inference", colors::JADE)
+                                        };
+
+                                        if ui.add_sized(
+                                            [ui.available_width(), 44.0],
+                                            egui::Button::new(
+                                                egui::RichText::new(button_text)
+                                                    .size(yama_theme::font_size::BODY)
+                                                    .strong()
+                                                    .color(if can_run || self.is_running { colors::OBSIDIAN } else { colors::TEXT_MUTED })
+                                            )
+                                            .fill(button_color)
+                                            .rounding(egui::Rounding::same(radius::MD))
+                                        ).clicked() && can_run {
+                                            self.start_inference();
+                                        }
+
+                                        // Error message with ember color
+                                        if let Some(err) = &self.error_message {
+                                            ui.add_space(spacing::S2);
+                                            ui.horizontal(|ui| {
+                                                ui.label(egui::RichText::new("⚠")
+                                                    .color(colors::EMBER));
+                                                ui.label(egui::RichText::new(err)
+                                                    .color(colors::EMBER)
+                                                    .size(yama_theme::font_size::SMALL));
+                                            });
+                                        }
+
+                                        ui.add_space(spacing::S3);
+                                    });
                             });
 
-                        ui.add_space(16.0);
+                        ui.add_space(spacing::S4);
 
                         // Results panel
                         egui::Frame::none()
-                            .fill(egui::Color32::from_rgb(15, 20, 25))
-                            .rounding(8.0)
+                            .fill(colors::BASALT)
+                            .stroke(egui::Stroke::new(1.0, colors::STONE))
+                            .rounding(egui::Rounding::same(radius::LG))
                             .show(ui, |ui| {
-                                let results_width = (ui.available_width() - 32.0).max(100.0);
-                                let results_height = (ui.available_height() - 16.0).max(100.0);
-                                ui.set_width(results_width);
+                                let results_height = (ui.available_height() - spacing::S2).max(150.0);
                                 ui.set_height(results_height);
 
                                 // Header
-                                ui.horizontal(|ui| {
-                                    ui.add_space(12.0);
-                                    ui.label(egui::RichText::new("Results").size(13.0).strong());
+                                egui::Frame::none()
+                                    .inner_margin(egui::Margin::symmetric(spacing::S4, spacing::S3))
+                                    .show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.label(egui::RichText::new("📊")
+                                                .size(14.0));
+                                            ui.label(egui::RichText::new("Results")
+                                                .color(colors::CHALK)
+                                                .strong());
 
-                                    if let Some(status) = &self.job_status {
-                                        let (status_text, status_color) = match status {
-                                            JobStatus::Queued => ("Queued", text_muted),
-                                            JobStatus::Extracting => ("Extracting", egui::Color32::from_rgb(255, 193, 7)),
-                                            JobStatus::Inferring => ("Inferring", egui::Color32::from_rgb(255, 193, 7)),
-                                            JobStatus::Completed => ("Complete", success),
-                                            JobStatus::Failed => ("Failed", primary),
-                                        };
-                                        ui.label(egui::RichText::new(format!("  {}", status_text)).size(11.0).color(status_color));
-                                    }
-                                });
+                                            if let Some(status) = &self.job_status {
+                                                let (status_text, status_color, status_icon) = match status {
+                                                    JobStatus::Queued => ("Queued", colors::TEXT_MUTED, "○"),
+                                                    JobStatus::Extracting => ("Extracting", colors::AMBER, "◐"),
+                                                    JobStatus::Inferring => ("Inferring", colors::VIOLET, "◑"),
+                                                    JobStatus::Completed => ("Complete", colors::JADE, "●"),
+                                                    JobStatus::Failed => ("Failed", colors::EMBER, "✕"),
+                                                };
+                                                ui.label(egui::RichText::new(format!("  {} {}", status_icon, status_text))
+                                                    .color(status_color)
+                                                    .size(yama_theme::font_size::SMALL));
+                                            }
+                                        });
+                                    });
 
-                                ui.add_space(8.0);
                                 ui.separator();
 
                                 // Results list
                                 egui::ScrollArea::vertical()
                                     .stick_to_bottom(true)
                                     .show(ui, |ui| {
-                                        ui.add_space(8.0);
+                                        ui.add_space(spacing::S2);
 
-                                        if self.results.is_empty() {
-                                            if self.is_running {
-                                                ui.horizontal(|ui| {
-                                                    ui.add_space(12.0);
-                                                    ui.label(egui::RichText::new("Processing...").color(text_muted));
-                                                    ui.spinner();
-                                                });
-                                            } else if self.job_status.is_none() {
-                                                ui.horizontal(|ui| {
-                                                    ui.add_space(12.0);
-                                                    ui.label(egui::RichText::new("Results will appear here").color(text_muted));
-                                                });
-                                            }
-                                        } else {
-                                            for chunk in &self.results {
-                                                ui.horizontal(|ui| {
-                                                    ui.add_space(12.0);
-                                                    ui.label(
-                                                        egui::RichText::new(format!("[{}]", Self::format_timestamp(chunk.timestamp_ms)))
-                                                            .color(success)
-                                                            .monospace()
-                                                            .size(11.0)
-                                                    );
-                                                    ui.add_space(8.0);
-                                                });
-                                                ui.horizontal_wrapped(|ui| {
-                                                    ui.add_space(12.0);
-                                                    ui.label(egui::RichText::new(&chunk.text).size(12.0));
-                                                });
-                                                ui.add_space(8.0);
-                                            }
+                                        egui::Frame::none()
+                                            .inner_margin(egui::Margin::symmetric(spacing::S4, 0.0))
+                                            .show(ui, |ui| {
+                                                if self.results.is_empty() {
+                                                    if self.is_running {
+                                                        ui.horizontal(|ui| {
+                                                            ui.spinner();
+                                                            ui.label(egui::RichText::new("Analyzing video...")
+                                                                .color(colors::VIOLET));
+                                                        });
+                                                    } else if self.job_status.is_none() {
+                                                        ui.label(egui::RichText::new("Results will appear here after inference")
+                                                            .color(colors::TEXT_MUTED)
+                                                            .italics());
+                                                    }
+                                                } else {
+                                                    for chunk in &self.results {
+                                                        // Timestamp badge
+                                                        ui.horizontal(|ui| {
+                                                            egui::Frame::none()
+                                                                .fill(colors::with_alpha(colors::JADE, 30))
+                                                                .rounding(egui::Rounding::same(radius::SM))
+                                                                .inner_margin(egui::Margin::symmetric(spacing::S2, spacing::S1))
+                                                                .show(ui, |ui| {
+                                                                    ui.label(
+                                                                        egui::RichText::new(Self::format_timestamp(chunk.timestamp_ms))
+                                                                            .color(colors::JADE)
+                                                                            .monospace()
+                                                                            .size(yama_theme::font_size::SMALL)
+                                                                    );
+                                                                });
+                                                        });
+                                                        ui.add_space(spacing::S1);
+                                                        ui.label(egui::RichText::new(&chunk.text)
+                                                            .size(yama_theme::font_size::BODY));
+                                                        ui.add_space(spacing::S3);
+                                                    }
 
-                                            // Typing indicator if still running
-                                            if self.is_running {
-                                                ui.horizontal(|ui| {
-                                                    ui.add_space(12.0);
-                                                    ui.spinner();
-                                                });
-                                            }
-                                        }
+                                                    if self.is_running {
+                                                        ui.horizontal(|ui| {
+                                                            ui.spinner();
+                                                            ui.label(egui::RichText::new("...")
+                                                                .color(colors::VIOLET));
+                                                        });
+                                                    }
+                                                }
+                                            });
 
-                                        ui.add_space(8.0);
+                                        ui.add_space(spacing::S2);
                                     });
                             });
                     });
@@ -686,7 +853,9 @@ fn main() -> Result<()> {
     eframe::run_native(
         "Yama",
         options,
-        Box::new(move |_cc| {
+        Box::new(move |cc| {
+            // Apply Yama theme
+            YamaTheme::new().apply(&cc.egui_ctx);
             Ok(Box::new(YamaApp::new(state, runtime)))
         }),
     )
