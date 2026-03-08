@@ -13,6 +13,10 @@ path = "src/main.rs"
 name = "yama-headless"
 path = "src/bin/headless.rs"
 
+[[bin]]
+name = "yama-event-bus"
+path = "src/bin/event-bus.rs"
+
 [dependencies]
 # Internal crates
 yama-protocol = { path = "../../../shared/protocol" }
@@ -39,6 +43,7 @@ eframe = { workspace = true }
 gstreamer = { workspace = true }
 gstreamer-app = { workspace = true }
 gstreamer-video = { workspace = true }
+gstreamer-pbutils = "0.23"
 
 # Container management
 bollard = { workspace = true }
@@ -76,6 +81,12 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
+# VLM inference (direct in-process) - optional, requires Xcode for Metal shaders
+mistralrs = { version = "0.7", default-features = false, features = ["metal"], optional = true }
+
+# Image processing (for VLM input conversion)
+image = { workspace = true }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 # macOS-specific dependencies
 metal = "0.29"
@@ -90,3 +101,5 @@ tokio-test = "0.4"
 default = ["metal"]
 metal = []
 moltenvk = []
+# Enable direct in-process VLM inference (requires Xcode for Metal shader compilation)
+direct-vlm = ["dep:mistralrs"]

@@ -18,11 +18,15 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 mod backend;
+#[cfg(feature = "direct-vlm")]
+mod direct_backend;
 mod event_bus_backend;
 mod frame_extractor;
 mod mock_backend;
 
 pub use backend::InferenceBackend;
+#[cfg(feature = "direct-vlm")]
+pub use direct_backend::{create_direct_backend, DirectVlmBackend, DirectVlmConfig};
 pub use event_bus_backend::{create_event_bus_backend, EventBusBackend};
 pub use frame_extractor::{ExtractionConfig, ExtractedFrame, FrameExtractor, VideoInfo};
 pub use mock_backend::MockBackend;
@@ -120,6 +124,9 @@ pub enum BackendType {
     Mock,
     /// Event bus backend for VLM container communication.
     EventBus,
+    /// Direct in-process VLM backend (requires `direct-vlm` feature and Xcode).
+    #[cfg(feature = "direct-vlm")]
+    Direct,
 }
 
 /// Configuration for the VLM inference service.
@@ -172,7 +179,7 @@ impl Default for VlmInferenceConfig {
             max_upload_size: default_max_upload_size(),
             frame_interval_ms: default_frame_interval_ms(),
             max_frames: default_max_frames(),
-            backend: BackendType::Mock,
+            backend: BackendType::default(),
             mock_enabled: default_mock_enabled(),
         }
     }
@@ -181,12 +188,9 @@ impl Default for VlmInferenceConfig {
 impl VlmInferenceConfig {
     /// Get the effective backend type.
     pub fn effective_backend(&self) -> BackendType {
-        // For backwards compatibility, honor mock_enabled if backend not explicitly set
-        if self.mock_enabled {
-            BackendType::Mock
-        } else {
-            self.backend
-        }
+        // Backend field takes precedence when explicitly set to non-default
+        // mock_enabled is deprecated - only use as fallback
+        self.backend
     }
 }
 
@@ -213,6 +217,11 @@ impl VlmInferenceService {
             BackendType::EventBus => {
                 info!("Using event bus inference backend");
                 Arc::new(create_event_bus_backend(&config).await?)
+            }
+            #[cfg(feature = "direct-vlm")]
+            BackendType::Direct => {
+                info!("Using direct in-process VLM backend");
+                Arc::new(create_direct_backend(&config))
             }
         };
 
@@ -448,9 +457,16 @@ impl VlmInferenceService {
 mod tests {
     use super::*;
 
+    fn mock_config() -> VlmInferenceConfig {
+        VlmInferenceConfig {
+            backend: BackendType::Mock,
+            ..Default::default()
+        }
+    }
+
     #[tokio::test]
     async fn test_create_job() {
-        let config = VlmInferenceConfig::default();
+        let config = mock_config();
         let service = VlmInferenceService::new(config).await.unwrap();
 
         let job_id = service
@@ -467,7 +483,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_models() {
-        let config = VlmInferenceConfig::default();
+        let config = mock_config();
         let service = VlmInferenceService::new(config).await.unwrap();
 
         let models = service.list_models();
@@ -477,18 +493,24 @@ mod tests {
 
     #[tokio::test]
     async fn test_backend_name() {
-        let config = VlmInferenceConfig::default();
+        let config = mock_config();
         let service = VlmInferenceService::new(config).await.unwrap();
         assert_eq!(service.backend_name(), "mock");
     }
 
     #[tokio::test]
     async fn test_with_custom_backend() {
-        let config = VlmInferenceConfig::default();
+        let config = mock_config();
         let backend: Arc<dyn InferenceBackend> = Arc::new(MockBackend::with_delay(1));
         let service = VlmInferenceService::with_backend(config, backend)
             .await
             .unwrap();
         assert_eq!(service.backend_name(), "mock");
+    }
+
+    #[test]
+    fn test_default_backend_is_mock() {
+        let config = VlmInferenceConfig::default();
+        assert_eq!(config.effective_backend(), BackendType::Mock);
     }
 }

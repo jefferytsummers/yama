@@ -84,6 +84,19 @@ enabled = ["get_current_frame", "get_detections", "search_history"]
 # Enable specific skills
 enabled = ["video-analysis"]
 
+[inference]
+# VLM Inference backend configuration
+# Backend: "mock" (testing), "eventbus" (VLM container), or "direct" (in-process)
+backend = "direct"
+# Directory for temporary video uploads
+upload_dir = "/tmp/yama-inference"
+# Maximum upload size in bytes (500MB)
+max_upload_size = 524288000
+# Frame extraction interval in milliseconds
+frame_interval_ms = 1000
+# Maximum frames to extract per video
+max_frames = 300
+
 [services]
 # Service definitions for the orchestrator
 
