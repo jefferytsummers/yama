@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use tracing::error;
 
 use crate::orchestrator::ServiceStatus;
-use crate::AppState;
+use crate::ServiceState;
 
 /// Health check response.
 #[derive(Debug, Serialize)]
@@ -48,7 +48,7 @@ fn status_to_string(status: ServiceStatus) -> String {
 }
 
 /// List all services.
-pub async fn list_services(State(state): State<Arc<AppState>>) -> Json<Vec<ServiceInfo>> {
+pub async fn list_services(State(state): State<Arc<ServiceState>>) -> Json<Vec<ServiceInfo>> {
     let orchestrator = state.orchestrator.read().await;
     let services = orchestrator.list_services().await;
 
@@ -73,7 +73,7 @@ pub struct ApiResponse {
 
 /// Start a service.
 pub async fn start_service(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<ServiceState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     let orchestrator = state.orchestrator.read().await;
@@ -101,7 +101,7 @@ pub async fn start_service(
 
 /// Stop a service.
 pub async fn stop_service(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<ServiceState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     let orchestrator = state.orchestrator.read().await;
@@ -168,7 +168,7 @@ pub struct HttpServerConfigInfo {
 }
 
 /// Get current configuration.
-pub async fn get_config(State(state): State<Arc<AppState>>) -> Json<ConfigResponse> {
+pub async fn get_config(State(state): State<Arc<ServiceState>>) -> Json<ConfigResponse> {
     let config = &state.config;
 
     Json(ConfigResponse {
@@ -208,7 +208,7 @@ pub struct ConfigUpdateRequest {
 
 /// Update configuration.
 pub async fn update_config(
-    State(_state): State<Arc<AppState>>,
+    State(_state): State<Arc<ServiceState>>,
     Json(_request): Json<ConfigUpdateRequest>,
 ) -> impl IntoResponse {
     // TODO: Implement config updates
@@ -257,7 +257,7 @@ pub struct VideoSourceInfo {
 }
 
 /// List video sources.
-pub async fn list_video_sources(State(_state): State<Arc<AppState>>) -> Json<Vec<VideoSourceInfo>> {
+pub async fn list_video_sources(State(_state): State<Arc<ServiceState>>) -> Json<Vec<VideoSourceInfo>> {
     // TODO: Read video sources from config
     // For now, return placeholder data
     Json(vec![
@@ -286,6 +286,7 @@ pub struct HostStatusResponse {
     pub http_server: SubsystemStatus,
     pub orchestrator: SubsystemStatus,
     pub compositor: SubsystemStatus,
+    pub inference: SubsystemStatus,
 }
 
 #[derive(Debug, Serialize)]
@@ -296,10 +297,40 @@ pub struct SubsystemStatus {
 }
 
 /// Get host status for console display.
-pub async fn get_status(State(state): State<Arc<AppState>>) -> Json<HostStatusResponse> {
+pub async fn get_status(State(state): State<Arc<ServiceState>>) -> Json<HostStatusResponse> {
     let orchestrator = state.orchestrator.read().await;
     let services = orchestrator.list_services().await;
     let running_count = services.iter().filter(|(_, s)| matches!(s, ServiceStatus::Running)).count();
+
+    // Get inference subsystem status
+    let inference_status = match &state.inference_service {
+        Some(service) => {
+            let backend_name = service.backend_name();
+            let is_ready = service.is_ready().await;
+            let status_str = if is_ready { "running" } else { "degraded" };
+            let details = match backend_name {
+                "mock" => "Mock backend (testing mode)".to_string(),
+                "event_bus" => {
+                    if is_ready {
+                        "VLM Container connected".to_string()
+                    } else {
+                        "VLM Container not connected".to_string()
+                    }
+                }
+                _ => format!("Unknown backend: {}", backend_name),
+            };
+            SubsystemStatus {
+                name: "Inference",
+                status: status_str,
+                details,
+            }
+        }
+        None => SubsystemStatus {
+            name: "Inference",
+            status: "stopped",
+            details: "Service not initialized".to_string(),
+        },
+    };
 
     Json(HostStatusResponse {
         version: env!("CARGO_PKG_VERSION"),
@@ -325,5 +356,6 @@ pub async fn get_status(State(state): State<Arc<AppState>>) -> Json<HostStatusRe
             status: "running",
             details: format!("{} @ {}fps", state.config.compositor.renderer, state.config.compositor.fps),
         },
+        inference: inference_status,
     })
 }

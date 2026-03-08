@@ -1,0 +1,27 @@
+[package]
+name = "yama-event-bus"
+version.workspace = true
+edition = "2024"
+license.workspace = true
+description = "Yama event bus server for inter-service communication"
+
+[dependencies]
+# Internal crates
+yama-protocol = { path = "../../shared/protocol" }
+
+# Async runtime
+tokio = { workspace = true }
+futures-util = { workspace = true }
+
+# WebSocket
+tokio-tungstenite = { workspace = true }
+
+# Protocol
+prost = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

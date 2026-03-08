@@ -7,9 +7,13 @@ use serde::Deserialize;
 /// VLM service configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct VlmConfig {
-    /// Event bus socket path.
+    /// Event bus socket path (Unix socket).
     #[serde(default = "default_event_bus_socket")]
     pub event_bus_socket: String,
+
+    /// Event bus WebSocket URL (takes precedence over socket if set).
+    #[serde(default = "default_event_bus_url")]
+    pub event_bus_url: Option<String>,
 
     /// Model configuration.
     #[serde(default)]
@@ -26,6 +30,10 @@ pub struct VlmConfig {
 
 fn default_event_bus_socket() -> String {
     std::env::var("YAMA_EVENT_BUS").unwrap_or_else(|_| "/tmp/yama-event.sock".to_string())
+}
+
+fn default_event_bus_url() -> Option<String> {
+    std::env::var("YAMA_EVENT_BUS_URL").ok()
 }
 
 /// Model configuration.
@@ -60,27 +68,36 @@ pub struct ModelConfig {
 }
 
 fn default_model_id() -> String {
-    "Qwen/Qwen2.5-VL-7B-Instruct".to_string()
+    std::env::var("VLM_MODEL_ID").unwrap_or_else(|_| "Qwen/Qwen2.5-VL-7B-Instruct".to_string())
 }
 
 fn default_isq() -> String {
-    "Q4K".to_string()
+    std::env::var("VLM_ISQ").unwrap_or_else(|_| "Q4K".to_string())
 }
 
 fn default_max_context() -> u32 {
-    4096
+    std::env::var("VLM_MAX_CONTEXT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(4096)
 }
 
 fn default_temperature() -> f32 {
-    0.7
+    std::env::var("VLM_TEMPERATURE")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.7)
 }
 
 fn default_max_tokens() -> u32 {
-    512
+    std::env::var("VLM_MAX_TOKENS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(512)
 }
 
 fn default_device() -> String {
-    "metal".to_string()
+    std::env::var("VLM_DEVICE").unwrap_or_else(|_| "metal".to_string())
 }
 
 impl Default for ModelConfig {
@@ -211,6 +228,7 @@ impl Default for VlmConfig {
     fn default() -> Self {
         Self {
             event_bus_socket: default_event_bus_socket(),
+            event_bus_url: default_event_bus_url(),
             model: ModelConfig::default(),
             live_stream: LiveStreamConfig::default(),
             batch: BatchConfig::default(),

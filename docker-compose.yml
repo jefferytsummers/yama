@@ -1,0 +1,80 @@
+# Yama Development Stack
+#
+# Usage:
+#   docker-compose up -d          # Start all services
+#   docker-compose logs -f vlm    # Watch VLM logs
+#   docker-compose down           # Stop all services
+#
+# After starting, run inference:
+#   cargo run -p yama-host-apple --bin yama-headless -- \
+#     --video ~/Documents/video.mp4 --prompt "What happens?" --synthesize
+#
+# Or launch the GUI:
+#   cargo run -p yama-host-apple --release
+
+services:
+  # Event bus for inter-service communication
+  event-bus:
+    build:
+      context: .
+      dockerfile: containers/event-bus/Dockerfile
+    ports:
+      - "8765:8765"
+    environment:
+      - EVENT_BUS_BIND=0.0.0.0:8765
+      - RUST_LOG=info
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "8765"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # VLM inference service
+  vlm:
+    build:
+      context: .
+      dockerfile: containers/vlm/Dockerfile
+    depends_on:
+      event-bus:
+        condition: service_healthy
+    environment:
+      # Connect to event bus via WebSocket
+      - YAMA_EVENT_BUS_URL=ws://event-bus:8765
+      - RUST_LOG=info
+      # Model configuration - use 3B model for faster startup
+      - VLM_MODEL_ID=Qwen/Qwen2.5-VL-3B-Instruct
+      - VLM_ISQ=Q4K
+      - VLM_DEVICE=cpu
+      - VLM_MAX_CONTEXT=4096
+      - VLM_MAX_TOKENS=512
+      # HuggingFace cache directory
+      - HF_HOME=/home/vlm/.cache/huggingface
+    volumes:
+      # Cache HuggingFace models between restarts
+      - huggingface-cache:/home/vlm/.cache/huggingface
+    # Increase startup time for model loading
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+    restart: unless-stopped
+
+    # For GPU support on Linux with NVIDIA, uncomment:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  huggingface-cache:
+
+# Network for service communication
+networks:
+  default:
+    name: yama-network

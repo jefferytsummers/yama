@@ -5,7 +5,11 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use tracing::{debug, info};
+use gstreamer as gst;
+use gstreamer::prelude::*;
+use gstreamer_pbutils as gst_pbutils;
+use gst_pbutils::prelude::*;
+use tracing::{debug, error, info, warn};
 
 /// Extracted frame data.
 #[derive(Debug, Clone)]
@@ -18,7 +22,7 @@ pub struct ExtractedFrame {
     pub width: u32,
     /// Frame height.
     pub height: u32,
-    /// Raw pixel data (NV12 format).
+    /// JPEG-encoded image data.
     pub data: Vec<u8>,
 }
 
@@ -33,6 +37,8 @@ pub struct ExtractionConfig {
     pub target_width: Option<u32>,
     /// Target height (None = original).
     pub target_height: Option<u32>,
+    /// JPEG quality (1-100).
+    pub jpeg_quality: u32,
 }
 
 impl Default for ExtractionConfig {
@@ -42,73 +48,309 @@ impl Default for ExtractionConfig {
             max_frames: 300,
             target_width: None,
             target_height: None,
+            jpeg_quality: 85,
         }
     }
 }
 
-/// Frame extractor for video files.
+/// Frame extractor for video files using GStreamer.
 pub struct FrameExtractor {
     config: ExtractionConfig,
 }
 
 impl FrameExtractor {
     /// Create a new frame extractor.
+    ///
+    /// Initializes GStreamer if not already initialized.
     pub fn new(config: ExtractionConfig) -> Self {
+        // Initialize GStreamer (safe to call multiple times)
+        if let Err(e) = gst::init() {
+            warn!("GStreamer init warning (may already be initialized): {}", e);
+        }
         Self { config }
     }
 
     /// Get video metadata without extracting frames.
     pub fn get_video_info(&self, video_path: &Path) -> Result<VideoInfo> {
-        // For now, return mock video info
-        // TODO: Implement actual video probing with GStreamer
         debug!("Getting video info for: {:?}", video_path);
 
+        // Build a discoverer pipeline to get video metadata
+        let discoverer = gst_pbutils::Discoverer::new(gst::ClockTime::from_seconds(10))
+            .context("Failed to create discoverer")?;
+
+        let uri = format!("file://{}", video_path.display());
+        let info = discoverer
+            .discover_uri(&uri)
+            .context("Failed to discover video")?;
+
+        let duration_ns = info.duration().unwrap_or(gst::ClockTime::ZERO);
+        let duration_ms = duration_ns.nseconds() / 1_000_000;
+
+        // Find video stream info
+        let mut width = 1920;
+        let mut height = 1080;
+        let mut fps = 30.0_f32;
+        let mut codec = "unknown".to_string();
+
+        for stream in info.video_streams() {
+            width = stream.width();
+            height = stream.height();
+            if let (num, denom) = (stream.framerate().numer(), stream.framerate().denom()) {
+                if denom > 0 {
+                    fps = num as f32 / denom as f32;
+                }
+            }
+            if let Some(caps) = stream.caps() {
+                if let Some(structure) = caps.structure(0) {
+                    codec = structure.name().to_string();
+                }
+            }
+            break; // Use first video stream
+        }
+
+        let estimated_frames = std::cmp::min(
+            (duration_ms / self.config.interval_ms) as u32,
+            self.config.max_frames,
+        );
+
         Ok(VideoInfo {
-            duration_ms: 10000, // 10 seconds
-            width: 1920,
-            height: 1080,
-            fps: 30.0,
-            codec: "h264".to_string(),
-            estimated_frames: 10, // Based on our interval
+            duration_ms,
+            width,
+            height,
+            fps,
+            codec,
+            estimated_frames,
         })
     }
 
     /// Extract frames from a video file.
     ///
-    /// Returns an iterator/stream of frames. For now, this is a placeholder
-    /// that will be implemented with actual GStreamer extraction.
-    pub async fn extract_frames(
-        &self,
-        video_path: &Path,
-    ) -> Result<Vec<ExtractedFrame>> {
+    /// Uses GStreamer with hardware-accelerated decoding (VideoToolbox on macOS)
+    /// and encodes frames to JPEG for transmission to the VLM container.
+    pub async fn extract_frames(&self, video_path: &Path) -> Result<Vec<ExtractedFrame>> {
         info!("Extracting frames from: {:?}", video_path);
 
-        // Get video info
-        let info = self.get_video_info(video_path)?;
-
-        // Calculate how many frames to extract
-        let frame_count = std::cmp::min(
-            (info.duration_ms / self.config.interval_ms) as u32,
-            self.config.max_frames,
-        );
-
-        // For now, return mock frames
-        // TODO: Implement actual frame extraction with GStreamer
-        let mut frames = Vec::with_capacity(frame_count as usize);
-
-        for i in 0..frame_count {
-            let timestamp_ms = i as u64 * self.config.interval_ms;
-
-            frames.push(ExtractedFrame {
-                number: i as u64,
-                timestamp_ms,
-                width: info.width,
-                height: info.height,
-                data: Vec::new(), // Empty for mock
-            });
+        // Verify file exists
+        if !video_path.exists() {
+            anyhow::bail!("Video file not found: {:?}", video_path);
         }
 
-        info!("Extracted {} frames", frames.len());
+        // Get video info for duration and frame count calculation
+        let info = self.get_video_info(video_path)?;
+        info!(
+            "Video: {}x{}, {:.1} fps, {} ms duration, codec: {}",
+            info.width, info.height, info.fps, info.duration_ms, info.codec
+        );
+
+        // Calculate target dimensions (preserve aspect ratio)
+        let (target_width, target_height) = self.calculate_target_size(info.width, info.height);
+
+        // Build GStreamer pipeline for frame extraction
+        let pipeline_str = self.build_extraction_pipeline(video_path, target_width, target_height)?;
+        debug!("GStreamer pipeline: {}", pipeline_str);
+
+        let pipeline = gst::parse::launch(&pipeline_str)
+            .context("Failed to parse pipeline")?
+            .downcast::<gst::Pipeline>()
+            .map_err(|_| anyhow::anyhow!("Failed to downcast to Pipeline"))?;
+
+        // Get appsink
+        let sink = pipeline
+            .by_name("sink")
+            .context("No appsink found")?
+            .downcast::<gstreamer_app::AppSink>()
+            .map_err(|_| anyhow::anyhow!("Failed to downcast to AppSink"))?;
+
+        // Configure appsink for manual pulling
+        sink.set_property("emit-signals", false);
+        sink.set_property("sync", false);
+        sink.set_property("max-buffers", 1u32);
+        sink.set_property("drop", true);
+
+        // Start pipeline
+        pipeline
+            .set_state(gst::State::Playing)
+            .context("Failed to start pipeline")?;
+
+        // Extract frames at specified intervals
+        let extraction_result = self
+            .extract_frames_at_intervals(
+                &pipeline,
+                &sink,
+                self.config.interval_ms,
+                self.config.max_frames,
+                info.duration_ms,
+            )
+                .await;
+
+        // Stop pipeline
+        pipeline
+            .set_state(gst::State::Null)
+            .context("Failed to stop pipeline")?;
+
+        let extracted = extraction_result?;
+        info!("Extracted {} frames", extracted.len());
+
+        Ok(extracted)
+    }
+
+    /// Calculate target dimensions preserving aspect ratio.
+    fn calculate_target_size(&self, original_width: u32, original_height: u32) -> (u32, u32) {
+        match (self.config.target_width, self.config.target_height) {
+            (Some(w), Some(h)) => (w, h),
+            (Some(w), None) => {
+                let h = (original_height as f32 * w as f32 / original_width as f32) as u32;
+                (w, h)
+            }
+            (None, Some(h)) => {
+                let w = (original_width as f32 * h as f32 / original_height as f32) as u32;
+                (w, h)
+            }
+            (None, None) => {
+                // Default: scale down large videos to max 1280 width
+                if original_width > 1280 {
+                    let scale = 1280.0 / original_width as f32;
+                    let w = 1280;
+                    let h = (original_height as f32 * scale) as u32;
+                    (w, h)
+                } else {
+                    (original_width, original_height)
+                }
+            }
+        }
+    }
+
+    /// Build the GStreamer pipeline string for frame extraction.
+    fn build_extraction_pipeline(
+        &self,
+        video_path: &Path,
+        target_width: u32,
+        target_height: u32,
+    ) -> Result<String> {
+        let path_str = video_path
+            .to_str()
+            .context("Invalid video path (non-UTF8)")?;
+
+        // Use decodebin for automatic codec detection
+        // VideoToolbox will be used automatically for H.264/H.265 on macOS
+        // Scale and convert to RGB for JPEG encoding
+        let pipeline = format!(
+            "filesrc location=\"{}\" ! \
+             decodebin ! \
+             videoconvert ! \
+             videoscale ! \
+             video/x-raw,format=RGB,width={},height={} ! \
+             jpegenc quality={} ! \
+             appsink name=sink",
+            path_str, target_width, target_height, self.config.jpeg_quality
+        );
+
+        Ok(pipeline)
+    }
+
+    /// Extract frames at specified intervals using seeking.
+    async fn extract_frames_at_intervals(
+        &self,
+        pipeline: &gst::Pipeline,
+        sink: &gstreamer_app::AppSink,
+        interval_ms: u64,
+        max_frames: u32,
+        duration_ms: u64,
+    ) -> Result<Vec<ExtractedFrame>> {
+        let mut frames = Vec::new();
+        let mut frame_number = 0u64;
+        let mut current_time_ms = 0u64;
+
+        // Wait for pipeline to be ready
+        let bus = pipeline.bus().context("No bus on pipeline")?;
+
+        // Wait for async-done or error
+        for msg in bus.iter_timed(gst::ClockTime::from_seconds(5)) {
+            match msg.view() {
+                gst::MessageView::AsyncDone(_) => break,
+                gst::MessageView::Error(e) => {
+                    anyhow::bail!("Pipeline error: {:?}", e.error());
+                }
+                _ => {}
+            }
+        }
+
+        while current_time_ms < duration_ms && frames.len() < max_frames as usize {
+            // Seek to target position
+            let seek_time = gst::ClockTime::from_mseconds(current_time_ms);
+
+            let seek_result = pipeline.seek_simple(
+                gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
+                seek_time,
+            );
+
+            if let Err(e) = seek_result {
+                warn!("Seek to {}ms failed: {:?}", current_time_ms, e);
+                current_time_ms += interval_ms;
+                continue;
+            }
+
+            // Wait for seek to complete
+            for msg in bus.iter_timed(gst::ClockTime::from_seconds(2)) {
+                match msg.view() {
+                    gst::MessageView::AsyncDone(_) => break,
+                    gst::MessageView::Error(e) => {
+                        error!("Error during seek: {:?}", e.error());
+                        break;
+                    }
+                    gst::MessageView::Eos(_) => {
+                        debug!("End of stream reached");
+                        return Ok(frames);
+                    }
+                    _ => {}
+                }
+            }
+
+            // Pull frame from appsink
+            match sink.try_pull_sample(gst::ClockTime::from_seconds(1)) {
+                Some(sample) => {
+                    if let Some(buffer) = sample.buffer() {
+                        let map = buffer.map_readable().context("Failed to map buffer")?;
+                        let jpeg_data = map.as_slice().to_vec();
+
+                        // Get actual dimensions from caps
+                        let (width, height) = if let Some(caps) = sample.caps() {
+                            let structure = caps.structure(0).context("No caps structure")?;
+                            let w = structure.get::<i32>("width").unwrap_or(1280) as u32;
+                            let h = structure.get::<i32>("height").unwrap_or(720) as u32;
+                            (w, h)
+                        } else {
+                            (1280, 720)
+                        };
+
+                        debug!(
+                            "Frame {} @ {}ms: {} bytes JPEG, {}x{}",
+                            frame_number,
+                            current_time_ms,
+                            jpeg_data.len(),
+                            width,
+                            height
+                        );
+
+                        frames.push(ExtractedFrame {
+                            number: frame_number,
+                            timestamp_ms: current_time_ms,
+                            width,
+                            height,
+                            data: jpeg_data,
+                        });
+
+                        frame_number += 1;
+                    }
+                }
+                None => {
+                    warn!("No sample available at {}ms", current_time_ms);
+                }
+            }
+
+            current_time_ms += interval_ms;
+        }
+
         Ok(frames)
     }
 
@@ -157,22 +399,39 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    #[tokio::test]
-    async fn test_frame_extraction_mock() {
+    #[test]
+    fn test_config_defaults() {
+        let config = ExtractionConfig::default();
+        assert_eq!(config.interval_ms, 1000);
+        assert_eq!(config.max_frames, 300);
+        assert_eq!(config.jpeg_quality, 85);
+    }
+
+    #[test]
+    fn test_target_size_calculation() {
+        let extractor = FrameExtractor::new(ExtractionConfig::default());
+
+        // Large video should be scaled down
+        let (w, h) = extractor.calculate_target_size(1920, 1080);
+        assert_eq!(w, 1280);
+        assert!(h <= 720);
+
+        // Small video should keep original size
+        let (w, h) = extractor.calculate_target_size(640, 480);
+        assert_eq!(w, 640);
+        assert_eq!(h, 480);
+    }
+
+    #[test]
+    fn test_target_size_with_explicit_width() {
         let config = ExtractionConfig {
-            interval_ms: 1000,
-            max_frames: 5,
+            target_width: Some(800),
             ..Default::default()
         };
-
         let extractor = FrameExtractor::new(config);
-        let frames = extractor
-            .extract_frames(&PathBuf::from("/tmp/test.mp4"))
-            .await
-            .unwrap();
 
-        assert_eq!(frames.len(), 5);
-        assert_eq!(frames[0].timestamp_ms, 0);
-        assert_eq!(frames[1].timestamp_ms, 1000);
+        let (w, h) = extractor.calculate_target_size(1920, 1080);
+        assert_eq!(w, 800);
+        assert_eq!(h, 450); // 1080 * 800/1920
     }
 }

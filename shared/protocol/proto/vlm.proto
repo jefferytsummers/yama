@@ -73,6 +73,22 @@ message VlmAnalyzeResponse {
     google.protobuf.Timestamp completed_at = 7;
 }
 
+// Progress heartbeat during VLM analysis.
+// Sent periodically while a frame is being analyzed to indicate the
+// inference is still active and prevent UI stalls.
+message VlmAnalyzeProgress {
+    // Request ID this progress corresponds to.
+    string request_id = 1;
+    // Current status (e.g., "decoding", "analyzing", "generating").
+    string status = 2;
+    // Tokens generated so far (for streaming inference).
+    uint32 tokens_generated = 3;
+    // Elapsed time in milliseconds since request started.
+    uint32 elapsed_ms = 4;
+    // Estimated remaining time in milliseconds (0 if unknown).
+    uint32 estimated_remaining_ms = 5;
+}
+
 // Structured detection from VLM analysis.
 message VlmDetection {
     // Detection label/class.

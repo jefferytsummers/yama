@@ -17,7 +17,7 @@ use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 use tracing::info;
 
-use crate::AppState;
+use crate::ServiceState;
 
 mod handlers;
 pub mod inference_handlers;
@@ -78,12 +78,12 @@ impl Default for HttpServerConfig {
 /// HTTP server for the Host UI.
 pub struct HttpServer {
     config: HttpServerConfig,
-    state: Arc<AppState>,
+    state: Arc<ServiceState>,
 }
 
 impl HttpServer {
     /// Create a new HTTP server.
-    pub fn new(config: HttpServerConfig, state: Arc<AppState>) -> Self {
+    pub fn new(config: HttpServerConfig, state: Arc<ServiceState>) -> Self {
         Self { config, state }
     }
 

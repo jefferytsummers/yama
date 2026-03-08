@@ -28,6 +28,9 @@ anyhow = { workspace = true }
 # Logging
 tracing = { workspace = true }
 
+# Unix-specific
+libc = { workspace = true }
+
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = { workspace = true }

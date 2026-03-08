@@ -12,8 +12,8 @@ use tokio::io::AsyncWriteExt;
 use tracing::{error, info};
 use uuid::Uuid;
 
-use crate::inference::{InferenceChunk, JobStatus, UploadInfo, VlmModelInfo};
-use crate::AppState;
+use yama_host_apple::inference::{InferenceChunk, JobStatus, UploadInfo, VlmModelInfo};
+use crate::ServiceState;
 
 /// Upload response.
 #[derive(Debug, Serialize)]
@@ -27,7 +27,7 @@ pub struct UploadResponse {
 
 /// Upload a video file for inference.
 pub async fn upload_video(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<ServiceState>>,
     mut multipart: Multipart,
 ) -> impl IntoResponse {
     let inference_service = match &state.inference_service {
@@ -219,7 +219,7 @@ pub struct StartInferenceResponse {
 
 /// Start inference on a video.
 pub async fn start_inference(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<ServiceState>>,
     Json(request): Json<StartInferenceRequest>,
 ) -> impl IntoResponse {
     let inference_service = match &state.inference_service {
@@ -339,7 +339,7 @@ pub struct InferenceJobResponse {
 
 /// Get inference job status and results.
 pub async fn get_inference_job(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<ServiceState>>,
     Path(job_id): Path<String>,
 ) -> impl IntoResponse {
     let inference_service = match &state.inference_service {
@@ -386,7 +386,7 @@ pub struct VlmModelsResponse {
 
 /// List available VLM models.
 pub async fn list_vlm_models(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<ServiceState>>,
 ) -> impl IntoResponse {
     let inference_service = match &state.inference_service {
         Some(s) => s,

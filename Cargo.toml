@@ -8,10 +8,12 @@ members = [
     "shared/agent-sdk",
     "shared/container-sdk",
     "shared/test-harness",
+    "shared/yama-theme",
 
     # Platform-agnostic containers
     "containers/agent",
     "containers/vlm",
+    "containers/event-bus",
     "containers/tools/code-executor",
     "containers/tools/file-system",
     "containers/tools/browser",

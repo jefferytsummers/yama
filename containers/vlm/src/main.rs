@@ -12,7 +12,7 @@ use tracing_subscriber::FmtSubscriber;
 
 use yama_container_sdk::health::ComponentStatus;
 use yama_container_sdk::{EventBusClient, HealthReporter};
-use yama_protocol::vlm::{VlmAnalyzeResponse, VlmBatchProgress};
+use yama_protocol::vlm::{VlmAnalyzeProgress, VlmAnalyzeResponse, VlmBatchProgress};
 
 mod batch_processor;
 mod config;
@@ -37,7 +37,8 @@ struct VlmService {
     sampler: Arc<FrameSampler>,
     dispatcher: EventDispatcher,
     result_rx: mpsc::Receiver<VlmAnalyzeResponse>,
-    progress_rx: mpsc::Receiver<VlmBatchProgress>,
+    batch_progress_rx: mpsc::Receiver<VlmBatchProgress>,
+    analyze_progress_rx: mpsc::Receiver<VlmAnalyzeProgress>,
 }
 
 impl VlmService {
@@ -46,15 +47,28 @@ impl VlmService {
         info!("Initializing VLM service");
 
         // Connect to event bus (we need two connections - one for sending, one for receiving)
-        let event_bus = EventBusClient::connect(&config.event_bus_socket, "vlm")
-            .await
-            .context("Failed to connect to event bus")?;
+        // Use WebSocket URL if provided, otherwise use Unix socket
+        let event_bus = if let Some(ref url) = config.event_bus_url {
+            info!("Connecting to event bus via WebSocket: {}", url);
+            EventBusClient::connect_ws(url, "vlm")
+                .await
+                .context("Failed to connect to event bus via WebSocket")?
+        } else {
+            info!("Connecting to event bus via Unix socket: {}", config.event_bus_socket);
+            EventBusClient::connect(&config.event_bus_socket, "vlm")
+                .await
+                .context("Failed to connect to event bus")?
+        };
 
-        let event_bus_shared = Arc::new(
+        let event_bus_shared = Arc::new(if let Some(ref url) = config.event_bus_url {
+            EventBusClient::connect_ws(url, "vlm-sender")
+                .await
+                .context("Failed to connect to event bus (sender) via WebSocket")?
+        } else {
             EventBusClient::connect(&config.event_bus_socket, "vlm-sender")
                 .await
-                .context("Failed to connect to event bus (sender)")?,
-        );
+                .context("Failed to connect to event bus (sender)")?
+        });
 
         info!("Connected to event bus");
 
@@ -78,7 +92,8 @@ impl VlmService {
 
         // Create channels for results
         let (result_tx, result_rx) = mpsc::channel::<VlmAnalyzeResponse>(100);
-        let (progress_tx, progress_rx) = mpsc::channel::<VlmBatchProgress>(100);
+        let (batch_progress_tx, batch_progress_rx) = mpsc::channel::<VlmBatchProgress>(100);
+        let (analyze_progress_tx, analyze_progress_rx) = mpsc::channel::<VlmAnalyzeProgress>(100);
 
         // Create event dispatcher
         let dispatcher = EventDispatcher::new(
@@ -86,7 +101,8 @@ impl VlmService {
             sampler.clone(),
             Some(batch_processor),
             result_tx,
-            progress_tx,
+            batch_progress_tx,
+            analyze_progress_tx,
         );
 
         Ok(Self {
@@ -98,7 +114,8 @@ impl VlmService {
             sampler,
             dispatcher,
             result_rx,
-            progress_rx,
+            batch_progress_rx,
+            analyze_progress_rx,
         })
     }
 
@@ -183,9 +200,16 @@ impl VlmService {
                 }
 
                 // Publish batch progress updates
-                Some(progress) = self.progress_rx.recv() => {
+                Some(progress) = self.batch_progress_rx.recv() => {
                     if let Err(e) = self.event_bus_shared.publish("vlm.batch.progress", progress).await {
                         error!("Failed to publish batch progress: {}", e);
+                    }
+                }
+
+                // Publish per-frame analysis progress heartbeats
+                Some(progress) = self.analyze_progress_rx.recv() => {
+                    if let Err(e) = self.event_bus_shared.publish("vlm.analyze.progress", progress).await {
+                        debug!("Failed to publish analyze progress: {}", e);
                     }
                 }
             }

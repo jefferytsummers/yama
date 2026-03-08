@@ -271,7 +271,7 @@ async fn handle_websocket_connection(
                 match msg {
                     Some(Ok(WsMessage::Binary(data))) => {
                         if let Ok(envelope) = Envelope::decode(data.as_ref()) {
-                            handle_message(&envelope, &client_id, &clients).await?;
+                            handle_message(&envelope, &client_id, &clients, &broadcast_tx).await?;
                         }
                     }
                     Some(Ok(WsMessage::Close(_))) | None => {
@@ -299,17 +299,25 @@ async fn handle_websocket_connection(
 
             // Handle broadcast messages
             msg = broadcast_rx.recv() => {
-                if let Ok(envelope) = msg {
-                    let clients = clients.read().await;
-                    if let Some(client) = clients.get(&client_id) {
-                        if should_deliver(&envelope, client) {
-                            let mut buf = Vec::new();
-                            envelope.encode(&mut buf)?;
-                            if let Err(e) = ws_tx.send(WsMessage::Binary(buf.into())).await {
-                                error!("Failed to send broadcast message: {}", e);
-                                break;
+                match msg {
+                    Ok(envelope) => {
+                        let clients = clients.read().await;
+                        if let Some(client) = clients.get(&client_id) {
+                            if should_deliver(&envelope, client) {
+                                info!("EVENT BUS: Delivering '{}' to client '{}'", envelope.topic, client_id);
+                                let mut buf = Vec::new();
+                                envelope.encode(&mut buf)?;
+                                if let Err(e) = ws_tx.send(WsMessage::Binary(buf.into())).await {
+                                    error!("Failed to send broadcast message: {}", e);
+                                    break;
+                                }
                             }
+                        } else {
+                            warn!("EVENT BUS: Client {} not found in registry for broadcast", client_id);
                         }
+                    }
+                    Err(e) => {
+                        warn!("EVENT BUS: Broadcast recv error for {}: {}", client_id, e);
                     }
                 }
             }
@@ -362,7 +370,7 @@ async fn handle_unix_connection(
                 match msg {
                     Some(Ok(WsMessage::Binary(data))) => {
                         if let Ok(envelope) = Envelope::decode(data.as_ref()) {
-                            handle_message(&envelope, &client_id, &clients).await?;
+                            handle_message(&envelope, &client_id, &clients, &broadcast_tx).await?;
                         }
                     }
                     Some(Ok(WsMessage::Close(_))) | None => {
@@ -383,16 +391,22 @@ async fn handle_unix_connection(
             }
 
             msg = broadcast_rx.recv() => {
-                if let Ok(envelope) = msg {
-                    let clients = clients.read().await;
-                    if let Some(client) = clients.get(&client_id) {
-                        if should_deliver(&envelope, client) {
-                            let mut buf = Vec::new();
-                            envelope.encode(&mut buf)?;
-                            if ws_tx.send(WsMessage::Binary(buf.into())).await.is_err() {
-                                break;
+                match msg {
+                    Ok(envelope) => {
+                        let clients = clients.read().await;
+                        if let Some(client) = clients.get(&client_id) {
+                            if should_deliver(&envelope, client) {
+                                info!("EVENT BUS: Delivering '{}' to Unix client '{}'", envelope.topic, client_id);
+                                let mut buf = Vec::new();
+                                envelope.encode(&mut buf)?;
+                                if ws_tx.send(WsMessage::Binary(buf.into())).await.is_err() {
+                                    break;
+                                }
                             }
                         }
+                    }
+                    Err(e) => {
+                        warn!("EVENT BUS: Unix broadcast recv error for {}: {}", client_id, e);
                     }
                 }
             }
@@ -409,11 +423,12 @@ async fn handle_unix_connection(
     Ok(())
 }
 
-/// Handle an incoming message.
+/// Handle an incoming message and route it to subscribers.
 async fn handle_message(
     envelope: &Envelope,
     client_id: &str,
     clients: &Arc<RwLock<HashMap<String, Client>>>,
+    broadcast_tx: &broadcast::Sender<Envelope>,
 ) -> Result<()> {
     match envelope.topic.as_str() {
         "system.subscribe" => {
@@ -422,11 +437,11 @@ async fn handle_message(
                     let mut clients = clients.write().await;
                     if let Some(client) = clients.get_mut(client_id) {
                         for topic in sub.topics {
-                            debug!("Client {} subscribed to {}", client_id, topic);
+                            info!("Client {} subscribed to topic: {}", client_id, topic);
                             client.subscriptions.insert(topic);
                         }
                         for pattern in sub.patterns {
-                            debug!("Client {} subscribed to pattern {}", client_id, pattern);
+                            info!("Client {} subscribed to pattern: {}", client_id, pattern);
                             client.patterns.insert(pattern);
                         }
                     }
@@ -449,8 +464,16 @@ async fn handle_message(
             }
         }
         _ => {
-            // Forward to target or broadcast
-            debug!("Forwarding message on topic {}", envelope.topic);
+            // Forward message to all matching subscribers via broadcast channel
+            info!("EVENT BUS: Broadcasting message on topic '{}' from client '{}'", envelope.topic, client_id);
+            match broadcast_tx.send(envelope.clone()) {
+                Ok(receiver_count) => {
+                    info!("EVENT BUS: Message broadcast to {} receivers", receiver_count);
+                }
+                Err(e) => {
+                    warn!("EVENT BUS: Failed to broadcast message on topic {}: {}", envelope.topic, e);
+                }
+            }
         }
     }
 
@@ -463,8 +486,10 @@ fn should_deliver(envelope: &Envelope, client: &Client) -> bool {
         return false;
     }
 
-    client.subscriptions.contains(&envelope.topic)
-        || matches_pattern(&envelope.topic, &client.patterns)
+    let matches_topic = client.subscriptions.contains(&envelope.topic);
+    let matches_patterns = matches_pattern(&envelope.topic, &client.patterns);
+
+    matches_topic || matches_patterns
 }
 
 /// Check if a topic matches any pattern.

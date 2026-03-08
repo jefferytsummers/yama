@@ -1,7 +1,8 @@
 //! Event bus message handlers for VLM service.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use bytes::Bytes;
@@ -14,7 +15,8 @@ use yama_container_sdk::client::Event;
 use yama_protocol::common::VideoFrameMeta;
 use yama_protocol::vlm::{
     ImageFormat, LiveStreamConfig, LiveStreamConfigRequest, LiveStreamConfigResponse,
-    VlmAnalyzeRequest, VlmAnalyzeResponse, VlmBatchProgress, VlmBatchRequest, VlmBatchResult,
+    VlmAnalyzeProgress, VlmAnalyzeRequest, VlmAnalyzeResponse, VlmBatchProgress, VlmBatchRequest,
+    VlmBatchResult,
 };
 
 use crate::batch_processor::BatchProcessor;
@@ -22,21 +24,28 @@ use crate::engine::VlmEngine;
 use crate::frame_sampler::{FrameSampler, SampledFrame, SourceConfig};
 use crate::image_encoder::{ImageEncoder, PixelFormat};
 
+/// Interval between progress heartbeats during inference.
+const HEARTBEAT_INTERVAL: Duration = Duration::from_millis(250);
+
 /// Handler for VLM analyze requests.
 pub struct AnalyzeHandler {
     engine: Arc<VlmEngine>,
+    progress_tx: mpsc::Sender<VlmAnalyzeProgress>,
 }
 
 impl AnalyzeHandler {
-    /// Create a new analyze handler.
-    pub fn new(engine: Arc<VlmEngine>) -> Self {
-        Self { engine }
+    /// Create a new analyze handler with a progress channel.
+    pub fn new(engine: Arc<VlmEngine>, progress_tx: mpsc::Sender<VlmAnalyzeProgress>) -> Self {
+        Self { engine, progress_tx }
     }
 
-    /// Handle an analyze request.
+    /// Handle an analyze request with progress heartbeats.
     #[instrument(skip(self, request), fields(request_id = %request.request_id))]
     pub async fn handle(&self, request: VlmAnalyzeRequest) -> Result<VlmAnalyzeResponse> {
         debug!("Processing analyze request");
+
+        let request_id = request.request_id.clone();
+        let start_time = Instant::now();
 
         // Decode image from request
         let image = self.decode_image(&request).await?;
@@ -54,14 +63,71 @@ impl AnalyzeHandler {
             None
         };
 
+        // Flag to signal heartbeat task to stop
+        let inference_done = Arc::new(AtomicBool::new(false));
+        let inference_done_clone = inference_done.clone();
+
+        // Spawn heartbeat task
+        let heartbeat_request_id = request_id.clone();
+        let heartbeat_tx = self.progress_tx.clone();
+        let heartbeat_start = start_time;
+
+        let heartbeat_task = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(HEARTBEAT_INTERVAL);
+            let mut tick_count = 0u32;
+
+            loop {
+                interval.tick().await;
+
+                // Check if inference is done
+                if inference_done_clone.load(Ordering::SeqCst) {
+                    break;
+                }
+
+                tick_count += 1;
+                let elapsed_ms = heartbeat_start.elapsed().as_millis() as u32;
+
+                // Determine status based on elapsed time
+                let status = if tick_count < 2 {
+                    "decoding"
+                } else if tick_count < 4 {
+                    "analyzing"
+                } else {
+                    "generating"
+                }
+                .to_string();
+
+                let progress = VlmAnalyzeProgress {
+                    request_id: heartbeat_request_id.clone(),
+                    status,
+                    tokens_generated: 0, // We don't have streaming token count
+                    elapsed_ms,
+                    estimated_remaining_ms: 0, // Unknown
+                };
+
+                if let Err(e) = heartbeat_tx.try_send(progress) {
+                    debug!("Heartbeat send failed (channel full or closed): {}", e);
+                }
+            }
+        });
+
         // Run inference
         let result = self
             .engine
             .analyze_with_params(image, &request.prompt, temperature, max_tokens)
-            .await?;
+            .await;
+
+        // Signal heartbeat task to stop
+        inference_done.store(true, Ordering::SeqCst);
+
+        // Wait for heartbeat task to finish
+        let _ = heartbeat_task.await;
+
+        // Handle result
+        let result = result?;
 
         Ok(VlmAnalyzeResponse {
-            request_id: request.request_id,
+            request_id,
             analysis: result.text,
             inference_time_ms: result.inference_time_ms,
             tokens_generated: result.tokens_generated,
@@ -209,12 +275,18 @@ impl FrameHandler {
             frame.frame_number, frame.source_id
         );
 
+        let source_id = frame.source_id.clone();
+
         match self.engine.analyze(frame.image, &frame.prompt).await {
             Ok(result) => {
+                // Report latency for adaptive sampling
+                let inference_duration = Duration::from_secs_f32(result.inference_time_ms / 1000.0);
+                self.sampler.report_latency(&source_id, inference_duration).await;
+
                 let response = VlmAnalyzeResponse {
                     request_id: format!(
                         "live-{}-{}",
-                        frame.source_id, frame.frame_number
+                        source_id, frame.frame_number
                     ),
                     analysis: result.text,
                     inference_time_ms: result.inference_time_ms,
@@ -237,7 +309,7 @@ impl FrameHandler {
             Err(e) => {
                 error!(
                     "Failed to analyze frame {} from {}: {}",
-                    frame.frame_number, frame.source_id, e
+                    frame.frame_number, source_id, e
                 );
             }
         }
@@ -276,6 +348,8 @@ impl ConfigHandler {
             sample_interval: Duration::from_millis(config.sample_interval_ms.into()),
             prompt: config.prompt.clone(),
             enabled: config.enabled,
+            adaptive: true, // Enable adaptive sampling by default
+            target_latency: Duration::from_millis(500),
         };
 
         // Update or register
@@ -324,12 +398,13 @@ impl EventDispatcher {
         sampler: Arc<FrameSampler>,
         batch_processor: Option<Arc<BatchProcessor>>,
         result_tx: mpsc::Sender<VlmAnalyzeResponse>,
-        progress_tx: mpsc::Sender<VlmBatchProgress>,
+        batch_progress_tx: mpsc::Sender<VlmBatchProgress>,
+        analyze_progress_tx: mpsc::Sender<VlmAnalyzeProgress>,
     ) -> Self {
-        let analyze_handler = AnalyzeHandler::new(engine.clone());
+        let analyze_handler = AnalyzeHandler::new(engine.clone(), analyze_progress_tx);
         let config_handler = ConfigHandler::new(sampler.clone());
 
-        let batch_handler = batch_processor.map(|p| BatchHandler::new(p, progress_tx));
+        let batch_handler = batch_processor.map(|p| BatchHandler::new(p, batch_progress_tx));
 
         let frame_handler = Some(FrameHandler::new(engine, sampler, result_tx));
 

@@ -2,14 +2,16 @@
 
 [model]
 # HuggingFace model ID (downloaded automatically)
-model_id = "Qwen/Qwen2.5-VL-7B-Instruct"
+# Override with VLM_MODEL_ID environment variable
+# model_id = "Qwen/Qwen2.5-VL-7B-Instruct"
 
 # Or specify a local path instead:
 # model_path = "/app/models/Qwen2.5-VL-7B"
 
 # In-situ quantization for memory efficiency
 # Options: Q4K, Q8_0, F16, BF16
-isq = "Q4K"
+# Override with VLM_ISQ environment variable
+# isq = "Q4K"
 
 # Maximum context length
 max_context = 4096
@@ -21,7 +23,9 @@ temperature = 0.7
 max_tokens = 512
 
 # Device to run inference on: "metal", "cuda", "cpu"
-device = "metal"
+# Override with VLM_DEVICE environment variable
+# NOTE: Comment out to allow env var override
+# device = "metal"
 
 [live_stream]
 # Enable live video stream analysis
