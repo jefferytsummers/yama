@@ -1,10 +1,10 @@
-# Yama: Content Analyst Video Analysis Platform
+# Yama: Agent-First Video Analysis Platform
 
 ## Executive Summary
 
-Yama is a batch video analysis platform designed for the **Content Analyst** persona: researchers, journalists, and analysts who work with video archives to extract insights, find patterns, and produce deliverables.
+Yama is a conversational video analysis platform where users interact through natural language with AI agent presets. Instead of traditional "import → search → extract" workflows, the agent orchestrates tools autonomously to accomplish complex video analysis tasks.
 
-**Target:** Process 100GB-10TB video libraries with local-first, privacy-preserving analysis.
+**Target:** 100GB-10TB video libraries with local-first, privacy-preserving analysis on Mac, with optional edge deployment on Jetson Thor.
 
 ---
 
@@ -14,10 +14,22 @@ Yama is a batch video analysis platform designed for the **Content Analyst** per
 |-----------|-------|
 | **Name** | Content Analyst |
 | **Role** | Researcher, journalist, analyst |
-| **Environment** | Mac (primary), Linux workstation |
 | **Mindset** | "I have too much footage and not enough time" |
 
 See [personas/content-analyst.md](./personas/content-analyst.md) for full user stories.
+
+---
+
+## Agent Presets
+
+Users select a preset that bundles models and capabilities:
+
+| Preset | Models | Capabilities |
+|--------|--------|--------------|
+| **Video Analyst** | Qwen2.5-VL, YOLOv8, RTMPose, CLIP | Find moments, detect objects, track motion |
+| **Document Reporter** | SmolDockling, Whisper, Gemma-3, CLIP | OCR slides, transcribe, generate reports |
+| **Quick Search** | CLIP, Whisper-tiny | Fast visual + transcript search |
+| **Custom** | User-selected | Domain-specific workflows |
 
 ---
 
@@ -25,27 +37,31 @@ See [personas/content-analyst.md](./personas/content-analyst.md) for full user s
 
 | Component | Technology | Rationale |
 |-----------|------------|-----------|
-| Platform | macOS (primary) | Target user environment |
-| Video Decode | GStreamer + VideoToolbox | Hardware acceleration |
+| Platform | macOS (primary), Jetson Thor (edge) | Target user environments |
+| Video Decode | GStreamer + VideoToolbox/NVDEC | Hardware acceleration |
 | Index Storage | SQLite + FTS5 + sqlite-vss | Fast local search with ANN |
 | Embeddings | CLIP (ViT-B/32) | Semantic video search |
 | Transcription | Whisper (whisper.cpp) | Speech-to-text |
-| VLM Inference | GGUF + MLX | Local Metal inference |
-| Clip Export | FFmpeg | Frame-accurate extraction |
-| UI Framework | egui | Native cross-platform |
+| VLM Inference | GGUF + MLX (Mac) / TensorRT-LLM (Jetson) | Local inference |
+| Edge Video | DeepStream 7.x | Multi-stream analytics |
+| UI Framework | egui (native) / SvelteKit (web) | Cross-platform |
 
 ---
 
 ## Roadmap Structure
 
 ```
-P0 UX Discovery (5-7d) ──┬── P0.5 GStreamer Spike (2d, parallel)
-                         ↓
-P1 Foundation (8d) → P2 Indexing + Vector (12d) → P3 Transcription (6d)
-                                                        ↓
-                   P4 Inference + Model Mgmt (9d) ──────┘
-                         ↓
-P5 Search + sqlite-vss (10d) → P6 Extraction (6d) → P7 Tools (8d) → P8 Export (5d)
+Phase 1: Core Infrastructure (10d)
+         │
+         ▼
+Phase 2: Indexing & Embeddings (12d)
+         │
+         ▼
+Phase 3: Agent System (14d)
+         │
+         ├───────────────────────┐
+         ▼                       ▼
+   Mac Release          Phase 4: Jetson Thor (20d)
 ```
 
 ---
@@ -54,46 +70,35 @@ P5 Search + sqlite-vss (10d) → P6 Extraction (6d) → P7 Tools (8d) → P8 Exp
 
 | Phase | Name | Days | Focus |
 |-------|------|------|-------|
-| 0 | UX Discovery | 5-7 | Workflow mapping, wireframes, component inventory |
-| 0.5 | GStreamer Spike | 2 | Validate CPU-buffer decode performance (parallel) |
-| 1 | Foundation | 8 | Core traits, batch processing, indexing providers |
-| 2 | Video Indexing | 12 | SQLite schema, CLIP embeddings, sqlite-vss vector index |
-| 3 | Transcription | 6 | Whisper integration, FTS5 search |
-| 4 | Inference | 9 | Local GGUF/MLX models, Metal acceleration, model management |
-| 5 | Search & Retrieval | 10 | Semantic (ANN) + full-text search, query parsing |
-| 6 | Clip Extraction | 6 | FFmpeg export, batch operations |
-| 7 | Tool System | 8 | Content Analyst agent tools |
-| 8 | Export & Reporting | 5 | Markdown, CSV, JSON reports |
-| **Total** | | **66-70 days** | |
+| 1 | Core Infrastructure | 10 | SQLite, batch processor, GStreamer, model manager |
+| 2 | Indexing & Embeddings | 12 | CLIP, Whisper, sqlite-vss, text embeddings |
+| 3 | Agent System | 14 | Presets, tool executor, chat interface, artifacts |
+| 4 | Jetson Thor Deployment | 20 | DeepStream, Triton, WebRTC, edge optimization |
+| **Total** | | **56 days** | |
 
 ---
 
 ## Workflow
 
 ```
-1. IMPORT
-   └─ Drag folder of videos into Yama
+1. SELECT PRESET
+   └─ Choose Video Analyst, Document Reporter, Quick Search, or Custom
 
-2. INDEX (background)
-   ├─ Transcription (Whisper)
-   ├─ Key frame extraction
-   ├─ CLIP embedding generation
-   └─ SQLite metadata storage
+2. ADD VIDEOS
+   └─ Drag folders into project (auto-indexes in background)
 
-3. QUERY
+3. CONVERSE
    └─ "Find all mentions of 'Q4 projections' with visible charts"
 
-4. REVIEW
-   ├─ Thumbnails + timestamps
-   ├─ Confidence scores
-   └─ Star/flag relevant results
+4. AGENT WORKS
+   ├─ Searches transcripts + visual content
+   ├─ Analyzes matching frames with VLM
+   └─ Extracts clips automatically
 
-5. EXTRACT
-   └─ Export matching clips with padding
-
-6. REPORT
-   ├─ Generate summary markdown
-   └─ Export CSV/JSON for further analysis
+5. REVIEW ARTIFACTS
+   ├─ Watch extracted clips
+   ├─ Read generated summaries
+   └─ Export reports
 ```
 
 ---
@@ -105,47 +110,36 @@ P5 Search + sqlite-vss (10d) → P6 Extraction (6d) → P7 Tools (8d) → P8 Exp
 | Time to first result (50 videos) | < 5 minutes (initial index) |
 | Query response time (indexed) | < 3 seconds |
 | Clip extraction throughput | 10 clips/minute |
-| False positive rate | < 20% for natural language queries |
+| VLM analysis latency | < 5 seconds |
 
 ---
 
-## Memory Budget (Mac 16GB)
+## Deployment Modes
 
-| Component | Allocation | Notes |
-|-----------|------------|-------|
-| Whisper (tiny.en) | 200MB | Fast transcription |
-| Whisper (base.en) | 400MB | Better accuracy |
-| CLIP (ViT-B/32) | 350MB | Semantic embeddings |
-| VLM (7B Q4) | 4GB | Analysis queries |
-| SQLite + index | 500MB | Metadata cache |
-| Video decode | 500MB | GStreamer buffers |
-| System reserve | 4GB | macOS, other apps |
-| **Available headroom** | ~5GB | |
+| Mode | Client | AI Server | Use Case |
+|------|--------|-----------|----------|
+| Mac Standalone | Mac (egui) | Mac (local) | Development, single user |
+| Mac + Jetson | Mac (egui) | Jetson (remote) | Production, distributed |
+| Jetson Standalone | Web / headless | Jetson (local) | Edge deployment |
 
 ---
 
 ## Non-Goals (MVP)
 
 Explicitly out of scope:
-- Real-time monitoring / live streams
+- Real-time live monitoring (post-event analysis only)
 - Multi-user collaboration
 - Cloud storage integration
-- Mobile access
-- Alert systems
+- Mobile native apps
 
 ---
 
 ## Phase Documents
 
-- [Phase 0: UX Discovery](./phase-0-ux-discovery.md) *(includes GStreamer Spike)*
-- [Phase 1: Foundation](./phase-1-foundation.md)
-- [Phase 2: Video Indexing](./phase-2-video-indexing.md) *(+sqlite-vss)*
-- [Phase 3: Transcription](./phase-3-transcription.md)
-- [Phase 4: Inference](./phase-4-inference.md) *(+model management)*
-- [Phase 5: Search & Retrieval](./phase-5-search.md) *(+ANN search)*
-- [Phase 6: Clip Extraction](./phase-6-clip-extraction.md)
-- [Phase 7: Tool System](./phase-7-tools.md)
-- [Phase 8: Export & Reporting](./phase-8-export.md)
+- [Phase 1: Core Infrastructure](./phases/phase-1-core-infrastructure.md)
+- [Phase 2: Indexing & Embeddings](./phases/phase-2-indexing-embeddings.md)
+- [Phase 3: Agent System](./phases/phase-3-agent-system.md)
+- [Phase 4: Jetson Thor Deployment](./phases/phase-4-jetson-deployment.md)
 
 ---
 
@@ -157,8 +151,9 @@ Explicitly out of scope:
 
 ---
 
-## Archived Roadmap
+## Archived Roadmaps
 
-The previous security monitoring roadmap (Jetson + real-time streams) has been archived:
+Previous roadmap iterations have been archived:
 
-- [Archive: Security Monitoring](./archive/security-monitoring/)
+- [Archive: Content Analyst Traditional](./archive/content-analyst-traditional/) - Original import→search→extract UX
+- [Archive: Security Monitoring](./archive/security-monitoring/) - Real-time Jetson surveillance (technical reference for Phase 4)

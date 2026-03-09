@@ -1,9 +1,10 @@
 # Implementation Checklist
 
-## Content Analyst Roadmap
+## Agent-First Video Analysis Roadmap
 
-**Total Duration:** 66-70 days
+**Total Duration:** 56 days
 **Target Persona:** Content Analyst (video researchers, footage reviewers)
+**Approach:** Conversational AI with agent presets
 
 ---
 
@@ -11,319 +12,200 @@
 
 | Phase | Name | Days | Status |
 |-------|------|------|--------|
-| 0 | UX Discovery | 5-7 | ⬜ Not Started |
-| 0.5 | GStreamer Spike | 2 | ⬜ Not Started |
-| 1 | Foundation | 8 | ⬜ Not Started |
-| 2 | Video Indexing | 12 | ⬜ Not Started |
-| 3 | Transcription | 6 | ⬜ Not Started |
-| 4 | Inference | 9 | ⬜ Not Started |
-| 5 | Search & Retrieval | 10 | ⬜ Not Started |
-| 6 | Clip Extraction | 6 | ⬜ Not Started |
-| 7 | Tool System | 8 | ⬜ Not Started |
-| 8 | Export & Reporting | 5 | ⬜ Not Started |
+| 1 | Core Infrastructure | 10 | ⬜ Not Started |
+| 2 | Indexing & Embeddings | 12 | ⬜ Not Started |
+| 3 | Agent System | 14 | ⬜ Not Started |
+| 4 | Jetson Thor Deployment | 20 | ⬜ Not Started |
 
 ---
 
-## Phase 0: UX Discovery (5-7 days)
+## Phase 1: Core Infrastructure (10 days)
 
-### Milestone 0.1: Workflow Mapping
-- [ ] 0.1.1 Import flow diagram
-- [ ] 0.1.2 Indexing flow diagram
-- [ ] 0.1.3 Search flow diagram
-- [ ] 0.1.4 Review flow diagram
-- [ ] 0.1.5 Extract flow diagram
-- [ ] 0.1.6 Report flow diagram
+### Milestone 1.1: SQLite Schema & IndexProvider
+- [ ] 1.1.1 Design schema (videos, keyframes, transcripts, detections)
+- [ ] 1.1.2 Create FTS5 tables with triggers
+- [ ] 1.1.3 Implement IndexProvider CRUD operations
+- [ ] 1.1.4 Add schema migrations
 
-### Milestone 0.2: Wireframe Exploration
-- [ ] 0.2.1 Library view wireframe
-- [ ] 0.2.2 Import overlay wireframe
-- [ ] 0.2.3 Search results wireframe
-- [ ] 0.2.4 Preview panel wireframe
-- [ ] 0.2.5 Clip extraction wireframe
-- [ ] 0.2.6 Model settings wireframe
-- [ ] 0.2.7 First-run wireframe
+### Milestone 1.2: BatchProcessor
+- [ ] 1.2.1 Define BatchProcessor trait
+- [ ] 1.2.2 Implement LocalBatchProcessor (Tokio)
+- [ ] 1.2.3 Progress channel for UI updates
+- [ ] 1.2.4 Cancellation support
 
-### Milestone 0.3: Component Inventory
-- [ ] 0.3.1 Audit existing components
-- [ ] 0.3.2 Document search results component
-- [ ] 0.3.3 Document multi-stage progress
-- [ ] 0.3.4 Document model download UI
-- [ ] 0.3.5 Document file drop zone
+### Milestone 1.3: GStreamer VideoDecoder
+- [ ] 1.3.1 Implement VideoDecoder trait (VideoToolbox)
+- [ ] 1.3.2 Frame extraction at timestamp
+- [ ] 1.3.3 Audio extraction for Whisper
+- [ ] 1.3.4 Metadata extraction
 
-### Milestone 0.4: UX Validation
-- [ ] 0.4.1 Walk through user stories
-- [ ] 0.4.2 Validate import flow
-- [ ] 0.4.3 Validate search flow
-- [ ] 0.4.4 Validate export flow
-- [ ] 0.4.5 Document decisions
-
-### Phase 0.5: GStreamer Spike (parallel)
-- [ ] 0.5.1 Benchmark single video decode
-- [ ] 0.5.2 Benchmark batch decode (10 videos)
-- [ ] 0.5.3 Profile with Instruments
-- [ ] 0.5.4 Document go/no-go decision
+### Milestone 1.4: ModelManager
+- [ ] 1.4.1 Model registry (list available)
+- [ ] 1.4.2 Load/unload lifecycle (idle timeout)
+- [ ] 1.4.3 Model download (HuggingFace)
+- [ ] 1.4.4 Capability detection (GPU, memory)
 
 ---
 
-## Phase 1: Foundation (8 days)
-
-### Milestone 1.1: Core Traits
-- [ ] 1.1.1 VideoDecoder trait
-- [ ] 1.1.2 IndexProvider trait
-- [ ] 1.1.3 BatchProcessor trait
-- [ ] 1.1.4 EmbeddingModel trait
-- [ ] 1.1.5 VlmProvider trait
-
-### Milestone 1.2: GStreamer Decoder
-- [ ] 1.2.1 VideoToolbox integration
-- [ ] 1.2.2 Frame extraction pipeline
-- [ ] 1.2.3 Seek to timestamp
-- [ ] 1.2.4 Metadata extraction
-
-### Milestone 1.3: SQLite Index
-- [ ] 1.3.1 Database schema (videos, keyframes, detections, transcripts)
-- [ ] 1.3.2 FTS5 triggers
-- [ ] 1.3.3 Video CRUD operations
-- [ ] 1.3.4 Keyframe storage
-- [ ] 1.3.5 Detection storage
-- [ ] 1.3.6 Embedding queries
-
-### Milestone 1.4: Batch Processor
-- [ ] 1.4.1 Directory watcher
-- [ ] 1.4.2 Job queue
-- [ ] 1.4.3 Progress tracking
-- [ ] 1.4.4 Resume capability
-
----
-
-## Phase 2: Video Indexing (12 days)
+## Phase 2: Indexing & Embeddings (12 days)
 
 ### Milestone 2.1: Key Frame Extraction
-- [ ] 2.1.1 Scene change detection
-- [ ] 2.1.2 Frame quality scoring
-- [ ] 2.1.3 Thumbnail generation
-- [ ] 2.1.4 Frame deduplication
+- [ ] 2.1.1 Scene change detection (histogram)
+- [ ] 2.1.2 Uniform sampling fallback
+- [ ] 2.1.3 Thumbnail generation (320px JPEG)
+- [ ] 2.1.4 Batch extraction (memory <2GB)
 
 ### Milestone 2.2: CLIP Embedding
-- [ ] 2.2.1 Model loading (ViT-B/32)
-- [ ] 2.2.2 Image preprocessing
-- [ ] 2.2.3 Batch embedding
-- [ ] 2.2.4 Embedding storage
+- [ ] 2.2.1 CLIP model loading (ViT-B/32 via ONNX)
+- [ ] 2.2.2 Image preprocessing (224x224, normalize)
+- [ ] 2.2.3 Batch embedding (GPU utilization >80%)
+- [ ] 2.2.4 Text embedding for queries
 
-### Milestone 2.3: Batch Indexer
-- [ ] 2.3.1 Video discovery
-- [ ] 2.3.2 Incremental indexing
-- [ ] 2.3.3 Progress reporting
-- [ ] 2.3.4 Error recovery
+### Milestone 2.3: Whisper Transcription
+- [ ] 2.3.1 Whisper model loading (base.en)
+- [ ] 2.3.2 Audio preprocessing (16kHz mono)
+- [ ] 2.3.3 Segment extraction (word-level timestamps)
+- [ ] 2.3.4 FTS5 integration
 
 ### Milestone 2.4: Vector Index (sqlite-vss)
 - [ ] 2.4.1 Add sqlite-vss dependency
-- [ ] 2.4.2 Create vss_keyframes virtual table
+- [ ] 2.4.2 Create vss_keyframes virtual table (512 dim)
 - [ ] 2.4.3 Insert embeddings on indexing
-- [ ] 2.4.4 ANN query function (<100ms for 500K embeddings)
+- [ ] 2.4.4 ANN query (<100ms for 500K embeddings)
+
+### Milestone 2.5: Text Embeddings
+- [ ] 2.5.1 Load text embedding model (MiniLM-L6)
+- [ ] 2.5.2 Embed transcript segments
+- [ ] 2.5.3 Semantic transcript search
 
 ---
 
-## Phase 3: Transcription (6 days)
+## Phase 3: Agent System (14 days)
 
-### Milestone 3.1: Audio Extraction
-- [ ] 3.1.1 GStreamer audio pipeline
-- [ ] 3.1.2 Handle no-audio videos
-- [ ] 3.1.3 Chunked extraction
+### Milestone 3.1: Agent Presets
+- [ ] 3.1.1 Define preset schema (JSON)
+- [ ] 3.1.2 Implement preset loader
+- [ ] 3.1.3 Model bundle validation
+- [ ] 3.1.4 Default presets (4 presets)
 
-### Milestone 3.2: Whisper Integration
-- [ ] 3.2.1 whisper.cpp bindings
-- [ ] 3.2.2 Word-level timestamps
-- [ ] 3.2.3 Model selection
+### Milestone 3.2: Tool Definitions
+- [ ] 3.2.1 search_videos (<3s response)
+- [ ] 3.2.2 get_frame (<100ms response)
+- [ ] 3.2.3 analyze_frame (VLM, <5s)
+- [ ] 3.2.4 extract_clips (FFmpeg batch)
+- [ ] 3.2.5 generate_summary (markdown)
+- [ ] 3.2.6 count_occurrences
+- [ ] 3.2.7 get_video_info
+- [ ] 3.2.8 list_indexed_videos
 
-### Milestone 3.3: FTS5 Integration
-- [ ] 3.3.1 Store transcripts
-- [ ] 3.3.2 FTS5 search
-- [ ] 3.3.3 Snippet generation
-- [ ] 3.3.4 Incremental transcription
+### Milestone 3.3: Tool Executor
+- [ ] 3.3.1 Tool registry with schemas
+- [ ] 3.3.2 Execution router (dispatch by name)
+- [ ] 3.3.3 Error handling (clear messages)
+- [ ] 3.3.4 Result caching (LRU)
+- [ ] 3.3.5 Streaming output for long operations
 
----
+### Milestone 3.4: Chat Interface
+- [ ] 3.4.1 Chat history (persist per project)
+- [ ] 3.4.2 Message streaming (incremental)
+- [ ] 3.4.3 Tool call rendering (UI blocks)
+- [ ] 3.4.4 Context management (prior turns)
+- [ ] 3.4.5 egui chat widget (keyboard shortcuts)
 
-## Phase 4: Inference (9 days)
-
-### Milestone 4.1: GGUF Model Loading
-- [ ] 4.1.1 llama.cpp integration
-- [ ] 4.1.2 Metal GPU backend
-- [ ] 4.1.3 Model warmup
-- [ ] 4.1.4 Memory management
-
-### Milestone 4.2: Image Preprocessing
-- [ ] 4.2.1 CLIP vision encoder
-- [ ] 4.2.2 Image resizing
-- [ ] 4.2.3 Normalization
-
-### Milestone 4.3: Inference Pipeline
-- [ ] 4.3.1 Batch inference
-- [ ] 4.3.2 Context window
-- [ ] 4.3.3 Streaming output
-- [ ] 4.3.4 Memory budget
-
-### Milestone 4.4: Model Management UI
-- [ ] 4.4.1 Model registry configuration
-- [ ] 4.4.2 Download manager with progress
-- [ ] 4.4.3 Storage manager (show sizes, delete)
-- [ ] 4.4.4 First-run wizard
+### Milestone 3.5: Artifact Store
+- [ ] 3.5.1 Define artifact types (clips, reports)
+- [ ] 3.5.2 Storage backend (SQLite + filesystem)
+- [ ] 3.5.3 Artifact viewer (preview in UI)
+- [ ] 3.5.4 Export options (download)
 
 ---
 
-## Phase 5: Search & Retrieval (10 days)
+## Phase 4: Jetson Thor Deployment (20 days)
 
-### Milestone 5.1: Query Parser
-- [ ] 5.1.1 Visual concept detection
-- [ ] 5.1.2 Temporal phrase extraction
-- [ ] 5.1.3 Multi-modal routing
+### Milestone 4.1: Platform Abstraction
+- [ ] 4.1.1 Remote provider traits
+- [ ] 4.1.2 Deployment config (Mac vs Jetson)
+- [ ] 4.1.3 Event bus authentication (HMAC)
+- [ ] 4.1.4 Session management
 
-### Milestone 5.2: Semantic Search (sqlite-vss ANN)
-- [ ] 5.2.1 CLIP text encoding
-- [ ] 5.2.2 sqlite-vss ANN query
-- [ ] 5.2.3 Top-K retrieval (<100ms for 500K vectors)
-- [ ] 5.2.4 Result threshold filtering
+### Milestone 4.2: DeepStream Pipeline
+- [ ] 4.2.1 Multi-stream input (4-8 RTSP)
+- [ ] 4.2.2 NvInfer integration (YOLOv8n)
+- [ ] 4.2.3 NvDCF tracker
+- [ ] 4.2.4 Metadata probe
+- [ ] 4.2.5 DeepStream container (Docker)
 
-### Milestone 5.3: Full-Text Search
-- [ ] 5.3.1 FTS5 query syntax
-- [ ] 5.3.2 Phrase search
-- [ ] 5.3.3 Boolean operators
+### Milestone 4.3: Triton Inference Server
+- [ ] 4.3.1 Model repository structure
+- [ ] 4.3.2 YOLOv8 TensorRT (<10ms inference)
+- [ ] 4.3.3 CLIP TensorRT (batch 32 <100ms)
+- [ ] 4.3.4 Qwen2.5-VL TensorRT-LLM (30 t/s)
+- [ ] 4.3.5 Triton Rust client (gRPC)
 
-### Milestone 5.4: Result Ranking
-- [ ] 5.4.1 Score fusion
-- [ ] 5.4.2 Temporal clustering
-- [ ] 5.4.3 Deduplication
-- [ ] 5.4.4 Confidence filtering
+### Milestone 4.4: VLM Orchestration
+- [ ] 4.4.1 Detection-triggered VLM
+- [ ] 4.4.2 Query handler (natural language)
+- [ ] 4.4.3 Context store (scene persistence)
+- [ ] 4.4.4 Multi-camera aggregation
 
----
-
-## Phase 6: Clip Extraction (6 days)
-
-### Milestone 6.1: FFmpeg Wrapper
-- [ ] 6.1.1 FFmpeg subprocess
-- [ ] 6.1.2 Frame-accurate seeking
-- [ ] 6.1.3 Error handling
-
-### Milestone 6.2: Clip Planning
-- [ ] 6.2.1 Segment padding
-- [ ] 6.2.2 Adjacent merging
-- [ ] 6.2.3 Duration limits
-
-### Milestone 6.3: Batch Export
-- [ ] 6.3.1 Parallel extraction
-- [ ] 6.3.2 Progress tracking
-- [ ] 6.3.3 Manifest generation
-
----
-
-## Phase 7: Tool System (8 days)
-
-### Milestone 7.1: Tool Definitions
-- [ ] 7.1.1 search_videos
-- [ ] 7.1.2 get_frame
-- [ ] 7.1.3 analyze_frame
-- [ ] 7.1.4 count_occurrences
-- [ ] 7.1.5 extract_clips
-- [ ] 7.1.6 generate_summary
-- [ ] 7.1.7 get_video_info
-- [ ] 7.1.8 list_indexed_videos
-
-### Milestone 7.2: Tool Executor
-- [ ] 7.2.1 Schema validation
-- [ ] 7.2.2 Execution dispatch
-- [ ] 7.2.3 Result formatting
-- [ ] 7.2.4 Error handling
-
-### Milestone 7.3: Result Caching
-- [ ] 7.3.1 LRU cache
-- [ ] 7.3.2 Cache invalidation
-- [ ] 7.3.3 Memory limits
-
----
-
-## Phase 8: Export & Reporting (5 days)
-
-### Milestone 8.1: Export Traits
-- [ ] 8.1.1 ExportFormat enum
-- [ ] 8.1.2 Exporter trait
-- [ ] 8.1.3 ExportConfig
-
-### Milestone 8.2: Markdown Report Generator
-- [ ] 8.2.1 Template system
-- [ ] 8.2.2 Timestamp formatting
-- [ ] 8.2.3 Table generation
-- [ ] 8.2.4 Video links
-
-### Milestone 8.3: JSON/CSV Exporters
-- [ ] 8.3.1 JSON serialization
-- [ ] 8.3.2 CSV writer
-- [ ] 8.3.3 Field mapping
-
-### Milestone 8.4: Export Pipeline
-- [ ] 8.4.1 Pipeline orchestration
-- [ ] 8.4.2 Progress reporting
-- [ ] 8.4.3 Batch export
-- [ ] 8.4.4 Error recovery
+### Milestone 4.5: WebRTC Streaming
+- [ ] 4.5.1 WebRTC server (GStreamer webrtcsink)
+- [ ] 4.5.2 Detection overlay
+- [ ] 4.5.3 HLS fallback (Safari compatibility)
+- [ ] 4.5.4 Client receiver (web/egui)
 
 ---
 
 ## Dependencies
 
 ```
-Phase 0 (UX Discovery) ──┬── Phase 0.5 (GStreamer Spike, parallel)
-                         │
-                         ▼
-                    Phase 1
-                   (Foundation)
-                         │
-    ┌────────────────────┼────────────────────┐
-    ▼                    ▼                    ▼
-Phase 2              Phase 3              Phase 4
-(Indexing+vss)       (Transcription)      (Inference+Mgmt)
-    │                    │                    │
-    └────────────┬───────┴────────────────────┘
-                 ▼
-            Phase 5
-         (Search+ANN)
-                 │
-    ┌────────────┴────────────┐
-    ▼                         ▼
-Phase 6                   Phase 7
-(Extraction)              (Tools)
-    │                         │
-    └────────────┬────────────┘
-                 ▼
-            Phase 8
-            (Export)
+Phase 1 (Core Infrastructure)
+         │
+         ▼
+Phase 2 (Indexing & Embeddings)
+         │
+         ▼
+Phase 3 (Agent System)
+         │
+         ├───────────────────────┐
+         ▼                       ▼
+   Mac Release          Phase 4 (Jetson Thor)
 ```
 
 ---
 
 ## Success Criteria
 
-From the Content Analyst persona:
-
 | User Story | Phase | Validation |
 |------------|-------|------------|
-| Search videos by spoken words | 3, 5 | Transcript FTS returns results |
-| Search by visual concepts | 2, 5 | CLIP similarity returns results |
-| Extract specific clips | 6 | FFmpeg exports correct segments |
-| Count occurrences | 7 | Tool returns accurate counts |
-| Generate summary reports | 7, 8 | Markdown report with timestamps |
-| Catalog large libraries | 2 | Batch indexer handles 1000+ videos |
+| Search videos by spoken words | 2, 3 | Transcript FTS returns results in <3s |
+| Search by visual concepts | 2, 3 | CLIP ANN returns results in <100ms |
+| Converse with agent | 3 | Chat interface works with presets |
+| Extract specific clips | 3 | Tool creates valid MP4 files |
+| Generate summary reports | 3 | Markdown with timestamps |
+| Edge deployment | 4 | 4 streams at 30fps on Jetson Thor |
 
 ---
 
-## Archived Roadmap
+## Archived Roadmaps
 
-The original real-time security monitoring roadmap has been archived:
+Previous roadmap iterations:
 
 ```
+roadmap/archive/content-analyst-traditional/
+├── ARCHIVED.md           # Archive notice
+├── phase-0-ux-discovery.md
+├── phase-1-foundation.md
+├── phase-2-video-indexing.md
+├── phase-3-transcription.md
+├── phase-4-inference.md
+├── phase-5-search.md
+├── phase-6-clip-extraction.md
+├── phase-7-tools.md
+└── phase-8-export.md
+
 roadmap/archive/security-monitoring/
-├── ARCHIVED.md      # Archival metadata
-├── README.md        # Original overview
-├── SUMMARY.md       # Original checklist
-└── phase-*.md       # Original 8 phases
+├── ARCHIVED.md           # Archive notice
+├── README.md             # Jetson reference architecture
+└── phase-*.md            # 8 original phases
 ```
-
-Patterns from the archived roadmap (event bus, trait abstractions) can be referenced for future real-time features.
