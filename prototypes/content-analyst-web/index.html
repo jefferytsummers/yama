@@ -122,6 +122,27 @@
       50% { opacity: 0.5; }
     }
 
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes progress-indeterminate {
+      0% { transform: translateX(-100%); }
+      50% { transform: translateX(100%); }
+      100% { transform: translateX(400%); }
+    }
+
+    @keyframes blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0; }
+    }
+
+    @keyframes typing-dot {
+      0%, 60%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-4px); }
+    }
+
     .animate-fade-in { animation: fadeIn 0.2s ease-out; }
     .animate-slide-up { animation: slideUp 0.3s ease-out; }
     .animate-slide-down { animation: slideDown 0.3s ease-out; }
@@ -559,7 +580,7 @@
     // ============================================
     // INPUT COMPONENT
     // ============================================
-    function Input({ placeholder, value, onChange, icon, style = {} }) {
+    function Input({ placeholder, value, onChange, icon, onKeyDown, disabled, style = {} }) {
       const [isFocused, setIsFocused] = useState(false);
 
       return (
@@ -583,6 +604,8 @@
             placeholder={placeholder}
             value={value}
             onChange={e => onChange(e.target.value)}
+            onKeyDown={onKeyDown}
+            disabled={disabled}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
             style={{
@@ -595,6 +618,7 @@
               fontSize: 14,
               outline: 'none',
               transition: 'border-color 0.15s',
+              opacity: disabled ? 0.6 : 1,
               fontFamily: 'inherit',
               ...style,
             }}
@@ -3166,9 +3190,424 @@
     }
 
     // ============================================
+    // THINKING INDICATOR
+    // ============================================
+    function ThinkingIndicator() {
+      return (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '12px 16px',
+          background: 'var(--bg-tertiary)',
+          borderRadius: 'var(--radius-lg)',
+          borderLeft: '3px solid var(--accent-info)',
+        }}>
+          <div style={{
+            display: 'flex',
+            gap: 4,
+          }}>
+            {[0, 1, 2].map(i => (
+              <div
+                key={i}
+                className="animate-pulse"
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  background: 'var(--accent-info)',
+                  animation: `pulse 1.4s ease-in-out ${i * 0.2}s infinite`,
+                }}
+              />
+            ))}
+          </div>
+          <span style={{
+            fontSize: 13,
+            color: 'var(--text-muted)',
+            fontStyle: 'italic',
+          }}>
+            Analyzing your request...
+          </span>
+        </div>
+      );
+    }
+
+    // ============================================
+    // TOOL CALL BLOCK
+    // ============================================
+    function ToolCallBlock({ tool, status, progress, result }) {
+      const [isExpanded, setIsExpanded] = useState(false);
+
+      const toolConfig = {
+        search_videos: {
+          icon: <Icons.Search />,
+          label: 'Searching videos',
+          color: 'var(--accent-info)',
+        },
+        extract_clip: {
+          icon: <Icons.Scissors />,
+          label: 'Extracting clip',
+          color: 'var(--accent-primary)',
+        },
+        capture_screenshot: {
+          icon: <Icons.Camera />,
+          label: 'Capturing screenshot',
+          color: 'var(--accent-info)',
+        },
+        generate_report: {
+          icon: <Icons.FileText />,
+          label: 'Generating report',
+          color: 'var(--accent-success)',
+        },
+        transcribe: {
+          icon: <Icons.MessageSquare />,
+          label: 'Transcribing audio',
+          color: 'var(--accent-primary)',
+        },
+        analyze_scene: {
+          icon: <Icons.Eye />,
+          label: 'Analyzing scene',
+          color: 'var(--accent-info)',
+        },
+        detect_objects: {
+          icon: <Icons.Cpu />,
+          label: 'Detecting objects',
+          color: 'var(--accent-primary)',
+        },
+      };
+
+      const config = toolConfig[tool.name] || {
+        icon: <Icons.Zap />,
+        label: tool.name,
+        color: 'var(--text-muted)',
+      };
+
+      const isComplete = status === 'complete';
+      const isRunning = status === 'running';
+
+      return (
+        <div style={{
+          background: 'var(--bg-secondary)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 'var(--radius-md)',
+          overflow: 'hidden',
+        }}>
+          {/* Header */}
+          <div
+            onClick={() => setIsExpanded(!isExpanded)}
+            style={{
+              padding: '10px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              cursor: 'pointer',
+              background: isComplete ? config.color + '10' : 'transparent',
+              transition: 'background 0.15s',
+            }}
+          >
+            {/* Icon */}
+            <div style={{
+              width: 28,
+              height: 28,
+              borderRadius: 'var(--radius-sm)',
+              background: config.color + '20',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: config.color,
+            }}>
+              {isRunning ? (
+                <div style={{
+                  width: 14,
+                  height: 14,
+                  border: '2px solid ' + config.color,
+                  borderTopColor: 'transparent',
+                  borderRadius: '50%',
+                  animation: 'spin 1s linear infinite',
+                }} />
+              ) : (
+                config.icon
+              )}
+            </div>
+
+            {/* Label & Status */}
+            <div style={{ flex: 1 }}>
+              <div style={{
+                fontSize: 13,
+                fontWeight: 500,
+                color: 'var(--text-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}>
+                {config.label}
+                {isComplete && (
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '2px 6px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--accent-success)' + '20',
+                    color: 'var(--accent-success)',
+                    fontSize: 10,
+                    fontWeight: 600,
+                  }}>
+                    <Icons.Check /> Done
+                  </span>
+                )}
+              </div>
+              {isRunning && progress && (
+                <div style={{
+                  fontSize: 11,
+                  color: 'var(--text-muted)',
+                  marginTop: 2,
+                }}>
+                  {progress}
+                </div>
+              )}
+            </div>
+
+            {/* Expand arrow */}
+            <div style={{
+              color: 'var(--text-muted)',
+              transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+              transition: 'transform 0.15s',
+            }}>
+              ▶
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          {isRunning && (
+            <div style={{
+              height: 2,
+              background: 'var(--bg-tertiary)',
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                height: '100%',
+                width: '30%',
+                background: config.color,
+                animation: 'progress-indeterminate 1.5s ease-in-out infinite',
+              }} />
+            </div>
+          )}
+
+          {/* Expanded details */}
+          {isExpanded && (
+            <div style={{
+              padding: '12px 14px',
+              borderTop: '1px solid var(--border-subtle)',
+              fontSize: 12,
+            }}>
+              {/* Parameters */}
+              {tool.params && (
+                <div style={{ marginBottom: result ? 12 : 0 }}>
+                  <div style={{
+                    fontSize: 10,
+                    fontWeight: 600,
+                    color: 'var(--text-muted)',
+                    textTransform: 'uppercase',
+                    marginBottom: 6,
+                  }}>
+                    Parameters
+                  </div>
+                  <div style={{
+                    padding: '8px 10px',
+                    background: 'var(--bg-tertiary)',
+                    borderRadius: 'var(--radius-sm)',
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    color: 'var(--text-secondary)',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-all',
+                  }}>
+                    {JSON.stringify(tool.params, null, 2)}
+                  </div>
+                </div>
+              )}
+
+              {/* Result */}
+              {result && (
+                <div>
+                  <div style={{
+                    fontSize: 10,
+                    fontWeight: 600,
+                    color: 'var(--text-muted)',
+                    textTransform: 'uppercase',
+                    marginBottom: 6,
+                  }}>
+                    Result
+                  </div>
+                  <div style={{
+                    padding: '8px 10px',
+                    background: 'var(--bg-tertiary)',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: 11,
+                    color: 'var(--text-secondary)',
+                  }}>
+                    {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ============================================
+    // ARTIFACT PREVIEW INLINE
+    // ============================================
+    function ArtifactPreviewInline({ artifact, onView }) {
+      const getIcon = () => {
+        switch (artifact.type) {
+          case 'clip': return <Icons.Film />;
+          case 'screenshot': return <Icons.Image />;
+          case 'report': return <Icons.FileText />;
+          default: return <Icons.File />;
+        }
+      };
+
+      const getColor = () => {
+        switch (artifact.type) {
+          case 'clip': return 'var(--accent-primary)';
+          case 'screenshot': return 'var(--accent-info)';
+          case 'report': return 'var(--accent-success)';
+          default: return 'var(--text-muted)';
+        }
+      };
+
+      return (
+        <div
+          onClick={() => onView?.(artifact)}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '10px 14px',
+            background: 'var(--bg-secondary)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-md)',
+            cursor: 'pointer',
+            transition: 'all 0.15s',
+            marginTop: 8,
+          }}
+          onMouseOver={e => {
+            e.currentTarget.style.borderColor = getColor();
+            e.currentTarget.style.background = getColor() + '10';
+          }}
+          onMouseOut={e => {
+            e.currentTarget.style.borderColor = 'var(--border-subtle)';
+            e.currentTarget.style.background = 'var(--bg-secondary)';
+          }}
+        >
+          <div style={{
+            width: 36,
+            height: 36,
+            borderRadius: 'var(--radius-sm)',
+            background: getColor() + '20',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: getColor(),
+          }}>
+            {getIcon()}
+          </div>
+          <div>
+            <div style={{
+              fontSize: 13,
+              fontWeight: 500,
+              color: 'var(--text-primary)',
+            }}>
+              {artifact.name}
+            </div>
+            <div style={{
+              fontSize: 11,
+              color: 'var(--text-muted)',
+            }}>
+              {artifact.type === 'clip' && artifact.duration}
+              {artifact.type === 'screenshot' && artifact.timestamp}
+              {artifact.type === 'report' && `${artifact.pages} pages`}
+              {' • '}{artifact.size}
+            </div>
+          </div>
+          <div style={{ color: 'var(--text-muted)', marginLeft: 8 }}>
+            <Icons.ExternalLink />
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================
+    // STREAMING TEXT
+    // ============================================
+    function StreamingText({ text, speed = 20 }) {
+      const [displayedText, setDisplayedText] = useState('');
+      const [isComplete, setIsComplete] = useState(false);
+
+      useEffect(() => {
+        if (!text) return;
+
+        let index = 0;
+        setDisplayedText('');
+        setIsComplete(false);
+
+        const timer = setInterval(() => {
+          if (index < text.length) {
+            setDisplayedText(text.slice(0, index + 1));
+            index++;
+          } else {
+            setIsComplete(true);
+            clearInterval(timer);
+          }
+        }, speed);
+
+        return () => clearInterval(timer);
+      }, [text, speed]);
+
+      return (
+        <span>
+          {displayedText}
+          {!isComplete && (
+            <span style={{
+              display: 'inline-block',
+              width: 2,
+              height: 16,
+              background: 'var(--accent-primary)',
+              marginLeft: 2,
+              animation: 'blink 1s infinite',
+            }} />
+          )}
+        </span>
+      );
+    }
+
+    // ============================================
     // CHAT MESSAGE COMPONENT
     // ============================================
-    function ChatMessage({ message, isUser }) {
+    function ChatMessage({ message, isUser, isStreaming, onArtifactView }) {
+      // Handle tool calls
+      if (message.type === 'tool_call') {
+        return (
+          <div style={{ marginBottom: 8 }}>
+            <ToolCallBlock
+              tool={message.tool}
+              status={message.status}
+              progress={message.progress}
+              result={message.result}
+            />
+          </div>
+        );
+      }
+
+      // Handle thinking indicator
+      if (message.type === 'thinking') {
+        return <ThinkingIndicator />;
+      }
+
+      // Regular message
       return (
         <div style={{
           background: isUser ? 'var(--bg-elevated)' : 'var(--bg-tertiary)',
@@ -3190,8 +3629,30 @@
             color: 'var(--text-primary)',
             whiteSpace: 'pre-wrap',
           }}>
-            {message.content}
+            {isStreaming ? (
+              <StreamingText text={message.content} speed={15} />
+            ) : (
+              message.content
+            )}
           </div>
+
+          {/* Inline artifacts */}
+          {message.artifacts && message.artifacts.length > 0 && (
+            <div style={{
+              marginTop: 12,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+            }}>
+              {message.artifacts.map((artifact, i) => (
+                <ArtifactPreviewInline
+                  key={i}
+                  artifact={artifact}
+                  onView={onArtifactView}
+                />
+              ))}
+            </div>
+          )}
         </div>
       );
     }
@@ -3219,45 +3680,247 @@
         setCurrentMessages([]);
       };
 
+      const [isProcessing, setIsProcessing] = useState(false);
+
+      const simulateToolStream = async (userQuery) => {
+        // Tool scenarios based on query content
+        const scenarios = [
+          {
+            trigger: /find|search|where|show me|look for/i,
+            tools: [
+              { name: 'search_videos', params: { query: userQuery, limit: 10 } },
+            ],
+            response: {
+              content: 'I found 3 relevant segments across your videos. The most significant discussion occurs in **Q4_Planning_Session_2.mp4** from 12:34 to 15:22 where the team discusses this topic in detail.\n\nHere\'s what I found:\n• Primary mention at 12:34 (high confidence)\n• Related discussion at 23:15\n• Brief reference at 45:02\n\nWould you like me to extract clips from any of these moments?',
+              artifacts: [],
+            },
+          },
+          {
+            trigger: /extract|clip|cut|save.*video/i,
+            tools: [
+              { name: 'search_videos', params: { query: userQuery, limit: 5 } },
+              { name: 'extract_clip', params: { source: 'Q4_Planning_Session_2.mp4', start: '12:34', end: '15:22' } },
+            ],
+            response: {
+              content: 'I\'ve extracted the clip you requested. The segment captures the key discussion about revenue targets and team assignments.',
+              artifacts: [
+                {
+                  id: 'art-new-' + Date.now(),
+                  type: 'clip',
+                  name: 'Revenue Discussion Clip',
+                  source: 'Q4_Planning_Session_2.mp4',
+                  timestamp: '12:34 - 15:22',
+                  duration: '2:48',
+                  size: '24.5 MB',
+                  createdAt: new Date(),
+                },
+              ],
+            },
+          },
+          {
+            trigger: /screenshot|frame|capture|image/i,
+            tools: [
+              { name: 'search_videos', params: { query: userQuery, limit: 3 } },
+              { name: 'capture_screenshot', params: { source: 'Q4_Planning_Session_2.mp4', timestamp: '14:02' } },
+            ],
+            response: {
+              content: 'I\'ve captured a screenshot from the most relevant frame. This shows the quarterly projections slide that was being presented.',
+              artifacts: [
+                {
+                  id: 'art-new-' + Date.now(),
+                  type: 'screenshot',
+                  name: 'Quarterly Projections Slide',
+                  source: 'Q4_Planning_Session_2.mp4',
+                  timestamp: '14:02',
+                  size: '1.2 MB',
+                  createdAt: new Date(),
+                },
+              ],
+            },
+          },
+          {
+            trigger: /summary|summarize|report|action items|key points/i,
+            tools: [
+              { name: 'transcribe', params: { source: 'all_videos', language: 'en' } },
+              { name: 'analyze_scene', params: { mode: 'summary' } },
+              { name: 'generate_report', params: { format: 'pdf', includeTimestamps: true } },
+            ],
+            response: {
+              content: 'I\'ve generated a comprehensive summary report based on all indexed videos.\n\n**Key Findings:**\n• Total meeting time analyzed: 2h 15m\n• 7 action items identified\n• 4 key decisions documented\n• 12 topics discussed\n\nThe report includes timestamps for all major discussion points.',
+              artifacts: [
+                {
+                  id: 'art-new-' + Date.now(),
+                  type: 'report',
+                  name: 'Meeting Summary Report',
+                  format: 'PDF',
+                  pages: 8,
+                  size: '2.1 MB',
+                  createdAt: new Date(),
+                },
+              ],
+            },
+          },
+          {
+            trigger: /detect|identify|recognize|person|object|who/i,
+            tools: [
+              { name: 'detect_objects', params: { query: userQuery, confidence: 0.8 } },
+              { name: 'analyze_scene', params: { mode: 'detailed' } },
+            ],
+            response: {
+              content: 'I\'ve analyzed the video content and identified the following:\n\n**People detected:**\n• Sarah (appears in 8 segments, total 24 min)\n• Mike (appears in 5 segments, total 15 min)\n• 3 other participants\n\n**Objects of interest:**\n• Presentation slides (12 unique slides)\n• Whiteboard content (3 instances)\n• Product demo on screen (2 instances)\n\nWould you like me to extract frames showing any specific person or object?',
+              artifacts: [],
+            },
+          },
+        ];
+
+        // Find matching scenario or use default
+        let scenario = scenarios.find(s => s.trigger.test(userQuery));
+        if (!scenario) {
+          scenario = scenarios[0]; // Default to search
+        }
+
+        // Simulate the streaming process
+        setIsProcessing(true);
+
+        // 1. Add thinking indicator
+        setCurrentMessages(prev => [...prev, { type: 'thinking', id: 'thinking-' + Date.now() }]);
+
+        await new Promise(r => setTimeout(r, 800));
+
+        // 2. Remove thinking, start tool calls
+        setCurrentMessages(prev => prev.filter(m => m.type !== 'thinking'));
+
+        // 3. Process each tool
+        for (let i = 0; i < scenario.tools.length; i++) {
+          const tool = scenario.tools[i];
+          const toolId = 'tool-' + Date.now() + '-' + i;
+
+          // Add running tool
+          setCurrentMessages(prev => [...prev, {
+            type: 'tool_call',
+            id: toolId,
+            tool: tool,
+            status: 'running',
+            progress: getToolProgress(tool.name, 0),
+          }]);
+
+          // Simulate progress updates
+          const progressSteps = getProgressSteps(tool.name);
+          for (let j = 0; j < progressSteps.length; j++) {
+            await new Promise(r => setTimeout(r, 400 + Math.random() * 300));
+            setCurrentMessages(prev => prev.map(m =>
+              m.id === toolId ? { ...m, progress: progressSteps[j] } : m
+            ));
+          }
+
+          // Complete tool
+          await new Promise(r => setTimeout(r, 300));
+          setCurrentMessages(prev => prev.map(m =>
+            m.id === toolId ? {
+              ...m,
+              status: 'complete',
+              progress: null,
+              result: getToolResult(tool.name),
+            } : m
+          ));
+
+          // Small delay between tools
+          if (i < scenario.tools.length - 1) {
+            await new Promise(r => setTimeout(r, 200));
+          }
+        }
+
+        // 4. Add final response with streaming flag
+        await new Promise(r => setTimeout(r, 400));
+        const responseMessage = {
+          role: 'assistant',
+          content: scenario.response.content,
+          artifacts: scenario.response.artifacts,
+          isStreaming: true,
+        };
+        setCurrentMessages(prev => [...prev, responseMessage]);
+
+        // 5. After streaming completes, mark as not streaming
+        await new Promise(r => setTimeout(r, scenario.response.content.length * 15 + 500));
+        setCurrentMessages(prev => prev.map(m =>
+          m === responseMessage ? { ...m, isStreaming: false } : m
+        ));
+
+        setIsProcessing(false);
+
+        // Add artifacts to project (in real app)
+        if (scenario.response.artifacts.length > 0) {
+          addToast(`Created ${scenario.response.artifacts.length} artifact(s)`, 'success');
+        }
+      };
+
+      const getToolProgress = (toolName, step) => {
+        const progressMap = {
+          search_videos: ['Scanning video index...', 'Matching query...', 'Ranking results...'],
+          extract_clip: ['Locating segment...', 'Extracting frames...', 'Encoding clip...'],
+          capture_screenshot: ['Finding frame...', 'Capturing...'],
+          generate_report: ['Analyzing content...', 'Structuring report...', 'Formatting PDF...'],
+          transcribe: ['Processing audio...', 'Transcribing speech...', 'Aligning timestamps...'],
+          analyze_scene: ['Detecting objects...', 'Analyzing context...', 'Generating insights...'],
+          detect_objects: ['Running detection model...', 'Tracking across frames...', 'Aggregating results...'],
+        };
+        return (progressMap[toolName] || ['Processing...'])[step] || 'Processing...';
+      };
+
+      const getProgressSteps = (toolName) => {
+        const stepsMap = {
+          search_videos: ['Scanning 12 videos...', 'Found 47 potential matches', 'Ranked top 10 results'],
+          extract_clip: ['Located segment at 12:34', 'Extracting 2:48 of video...', 'Encoding H.264...'],
+          capture_screenshot: ['Frame located at 14:02', 'Capturing 1920x1080...'],
+          generate_report: ['Analyzed 2h 15m of content', 'Identified 7 sections', 'Generating 8-page PDF...'],
+          transcribe: ['Processing audio stream...', 'Transcribed 45 minutes', 'Aligned 312 segments'],
+          analyze_scene: ['Detected 15 unique objects', 'Identified 4 speakers', 'Generated scene graph'],
+          detect_objects: ['YOLOv8 processing...', 'Tracked 23 objects', 'Aggregated 156 detections'],
+        };
+        return stepsMap[toolName] || ['Processing...', 'Complete'];
+      };
+
+      const getToolResult = (toolName) => {
+        const results = {
+          search_videos: { matches: 10, videos_scanned: 12, top_score: 0.94 },
+          extract_clip: { duration: '2:48', size: '24.5 MB', format: 'H.264' },
+          capture_screenshot: { resolution: '1920x1080', format: 'PNG' },
+          generate_report: { pages: 8, sections: 7, format: 'PDF' },
+          transcribe: { duration: '45:00', segments: 312, language: 'en' },
+          analyze_scene: { objects: 15, speakers: 4, scenes: 8 },
+          detect_objects: { total_detections: 156, unique_objects: 23, confidence_avg: 0.87 },
+        };
+        return results[toolName] || { status: 'complete' };
+      };
+
       const handleSubmit = () => {
-        if (!query.trim()) return;
+        if (!query.trim() || isProcessing) return;
 
         if (project.indexed === 0) {
           addToast('Please index videos before querying', 'error');
           return;
         }
 
-        // Add user message
-        const userMessage = { role: 'user', content: query };
+        const userQuery = query;
+        const userMessage = { role: 'user', content: userQuery };
 
-        // Mock AI response
-        const aiResponses = [
-          'I found 3 relevant segments across your videos. The most significant discussion occurs in the meeting recording from 12:34 to 15:22. Would you like me to extract this clip?',
-          'Based on my analysis, here are the key points mentioned:\n\n• Revenue targets for Q4: $2.4M\n• Current pipeline status: 78% coverage\n• Top priority accounts identified\n\nI can generate a detailed report if you need.',
-          'I\'ve identified 5 instances where this topic is discussed. The speakers include Sarah (3 mentions) and Mike (2 mentions). Should I show you the specific timestamps?',
-          'The video content shows a product demonstration starting at 08:45. Key features highlighted include the dashboard redesign and new analytics tools. I can extract screenshots of each feature if helpful.',
-        ];
-
-        const assistantMessage = {
-          role: 'assistant',
-          content: aiResponses[Math.floor(Math.random() * aiResponses.length)],
-        };
-
-        setCurrentMessages(prev => [...prev, userMessage, assistantMessage]);
+        setCurrentMessages(prev => [...prev, userMessage]);
         setQuery('');
 
-        // If this is a new chat, create it
+        // Start the tool streaming simulation
+        simulateToolStream(userQuery);
+
+        // Create new chat if needed
         if (!activeChat) {
           const newChat = {
             id: 'chat-' + Date.now(),
-            title: query.slice(0, 40) + (query.length > 40 ? '...' : ''),
-            preview: query,
-            messageCount: 2,
+            title: userQuery.slice(0, 40) + (userQuery.length > 40 ? '...' : ''),
+            preview: userQuery,
+            messageCount: 1,
             createdAt: new Date(),
-            messages: [userMessage, assistantMessage],
+            messages: [userMessage],
           };
           setActiveChat(newChat);
-          // In a real app, this would update the project's chatHistory
         }
       };
 
@@ -3479,10 +4142,24 @@
                 ) : (
                   <div style={{ maxWidth: 700, margin: '0 auto' }}>
                     {currentMessages.map((msg, idx) => (
-                      <div key={idx} className="animate-slide-up" style={{ marginBottom: 16 }}>
-                        <ChatMessage message={msg} isUser={msg.role === 'user'} />
+                      <div
+                        key={msg.id || idx}
+                        className="animate-slide-up"
+                        style={{ marginBottom: msg.type === 'tool_call' ? 8 : 16 }}
+                      >
+                        <ChatMessage
+                          message={msg}
+                          isUser={msg.role === 'user'}
+                          isStreaming={msg.isStreaming}
+                          onArtifactView={handleViewArtifact}
+                        />
                       </div>
                     ))}
+                    {isProcessing && currentMessages.length > 0 && !currentMessages.some(m => m.type === 'thinking' || m.status === 'running') && (
+                      <div style={{ marginBottom: 16 }}>
+                        <ThinkingIndicator />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -3502,16 +4179,34 @@
                   }}>
                     <div style={{ flex: 1 }}>
                       <Input
-                        placeholder="Ask about your videos..."
+                        placeholder={isProcessing ? "Processing..." : "Ask about your videos..."}
                         value={query}
                         onChange={setQuery}
+                        disabled={isProcessing}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey && query.trim() && !isProcessing) {
+                            e.preventDefault();
+                            handleSubmit();
+                          }
+                        }}
                         style={{
                           background: 'var(--bg-primary)',
                         }}
                       />
                     </div>
-                    <Button onClick={handleSubmit} disabled={!query.trim()}>
-                      <Icons.Send />
+                    <Button onClick={handleSubmit} disabled={!query.trim() || isProcessing}>
+                      {isProcessing ? (
+                        <div style={{
+                          width: 16,
+                          height: 16,
+                          border: '2px solid currentColor',
+                          borderTopColor: 'transparent',
+                          borderRadius: '50%',
+                          animation: 'spin 1s linear infinite',
+                        }} />
+                      ) : (
+                        <Icons.Send />
+                      )}
                     </Button>
                   </div>
                 </div>
