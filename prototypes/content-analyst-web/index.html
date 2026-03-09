@@ -3394,62 +3394,58 @@
             </div>
           )}
 
-          {/* Expanded details */}
+          {/* Expanded details - simplified summary */}
           {isExpanded && (
             <div style={{
               padding: '12px 14px',
               borderTop: '1px solid var(--border-subtle)',
-              fontSize: 12,
+              fontSize: 13,
+              color: 'var(--text-secondary)',
+              lineHeight: 1.5,
             }}>
-              {/* Parameters */}
-              {tool.params && (
-                <div style={{ marginBottom: result ? 12 : 0 }}>
-                  <div style={{
-                    fontSize: 10,
-                    fontWeight: 600,
-                    color: 'var(--text-muted)',
-                    textTransform: 'uppercase',
-                    marginBottom: 6,
-                  }}>
-                    Parameters
-                  </div>
-                  <div style={{
-                    padding: '8px 10px',
-                    background: 'var(--bg-tertiary)',
-                    borderRadius: 'var(--radius-sm)',
-                    fontFamily: 'monospace',
-                    fontSize: 11,
-                    color: 'var(--text-secondary)',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-all',
-                  }}>
-                    {JSON.stringify(tool.params, null, 2)}
-                  </div>
-                </div>
+              {tool.name === 'search_videos' && (
+                <span>
+                  {tool.params?.query && <>Searched for "{tool.params.query}"</>}
+                  {result && <> — found {result.matches} matches across {result.videos_scanned} videos</>}
+                </span>
               )}
-
-              {/* Result */}
-              {result && (
-                <div>
-                  <div style={{
-                    fontSize: 10,
-                    fontWeight: 600,
-                    color: 'var(--text-muted)',
-                    textTransform: 'uppercase',
-                    marginBottom: 6,
-                  }}>
-                    Result
-                  </div>
-                  <div style={{
-                    padding: '8px 10px',
-                    background: 'var(--bg-tertiary)',
-                    borderRadius: 'var(--radius-sm)',
-                    fontSize: 11,
-                    color: 'var(--text-secondary)',
-                  }}>
-                    {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
-                  </div>
-                </div>
+              {tool.name === 'extract_clip' && (
+                <span>
+                  {tool.params?.source && <>Extracting from {tool.params.source}</>}
+                  {tool.params?.start && tool.params?.end && <> ({tool.params.start} → {tool.params.end})</>}
+                  {result && <> — {result.duration} clip saved</>}
+                </span>
+              )}
+              {tool.name === 'capture_screenshot' && (
+                <span>
+                  {tool.params?.source && <>Capturing from {tool.params.source}</>}
+                  {tool.params?.timestamp && <> at {tool.params.timestamp}</>}
+                  {result && <> — {result.resolution} image</>}
+                </span>
+              )}
+              {tool.name === 'generate_report' && (
+                <span>
+                  Generated {result?.format || 'PDF'} report
+                  {result && <> — {result.pages} pages covering {result.sections} sections</>}
+                </span>
+              )}
+              {tool.name === 'transcribe' && (
+                <span>
+                  Transcribed audio content
+                  {result && <> — {result.segments} segments from {result.duration}</>}
+                </span>
+              )}
+              {tool.name === 'analyze_scene' && (
+                <span>
+                  Analyzed video scenes
+                  {result && <> — found {result.objects} objects and {result.speakers} speakers</>}
+                </span>
+              )}
+              {tool.name === 'detect_objects' && (
+                <span>
+                  Object detection complete
+                  {result && <> — identified {result.unique_objects} unique objects</>}
+                </span>
               )}
             </div>
           )}
