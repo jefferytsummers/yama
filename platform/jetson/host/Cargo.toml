@@ -48,6 +48,10 @@ bytes = { workspace = true }
 # Network
 tokio-tungstenite = { workspace = true }
 
+# Concurrency
+dashmap = { workspace = true }
+uuid = { workspace = true }
+
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }

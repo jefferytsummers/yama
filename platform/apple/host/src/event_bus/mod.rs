@@ -5,18 +5,22 @@
 //! - Unix socket server for container IPC
 //! - Topic-based pub/sub routing
 //! - Protocol Buffer message serialization
+//!
+//! Uses DashMap for lock-free concurrent client management.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use dashmap::DashMap;
 use futures_util::{SinkExt, StreamExt};
 use prost::Message;
 use tokio::net::{TcpListener, UnixListener};
-use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio::sync::{broadcast, mpsc};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tracing::{debug, error, info, warn};
+use uuid::Uuid;
 
 use yama_protocol::common::{Envelope, Subscribe, Unsubscribe};
 
@@ -64,12 +68,16 @@ struct Client {
     patterns: HashSet<String>,
 }
 
+/// Type alias for the client registry using DashMap for lock-free access.
+type ClientRegistry = Arc<DashMap<String, Client>>;
+
 /// The event bus server.
 pub struct EventBus {
     config: EventBusConfig,
-    clients: Arc<RwLock<HashMap<String, Client>>>,
+    clients: ClientRegistry,
     broadcast_tx: broadcast::Sender<Envelope>,
     shutdown_tx: mpsc::Sender<()>,
+    #[allow(dead_code)]
     shutdown_rx: mpsc::Receiver<()>,
 }
 
@@ -81,7 +89,7 @@ impl EventBus {
 
         Ok(Self {
             config,
-            clients: Arc::new(RwLock::new(HashMap::new())),
+            clients: Arc::new(DashMap::new()),
             broadcast_tx,
             shutdown_tx,
             shutdown_rx,
@@ -173,7 +181,7 @@ impl EventBus {
             loop {
                 match listener.accept().await {
                     Ok((stream, _addr)) => {
-                        let client_id = format!("unix-{}", uuid_v4());
+                        let client_id = format!("unix-{}", Uuid::new_v4());
                         info!("New Unix socket connection: {}", client_id);
 
                         let clients = clients.clone();
@@ -203,9 +211,9 @@ impl EventBus {
         let target = envelope.target.clone();
 
         if target.is_empty() {
-            // Broadcast to all matching subscribers
-            let clients = self.clients.read().await;
-            for client in clients.values() {
+            // Broadcast to all matching subscribers using DashMap iteration
+            for client_ref in self.clients.iter() {
+                let client = client_ref.value();
                 if client.subscriptions.contains(&topic) || matches_pattern(&topic, &client.patterns)
                 {
                     if let Err(e) = client.tx.send(envelope.clone()).await {
@@ -215,9 +223,8 @@ impl EventBus {
             }
         } else {
             // Send to specific target
-            let clients = self.clients.read().await;
-            if let Some(client) = clients.get(&target) {
-                if let Err(e) = client.tx.send(envelope).await {
+            if let Some(client_ref) = self.clients.get(&target) {
+                if let Err(e) = client_ref.tx.send(envelope).await {
                     warn!("Failed to send to client {}: {}", target, e);
                 }
             }
@@ -238,7 +245,7 @@ impl EventBus {
 async fn handle_websocket_connection(
     stream: tokio::net::TcpStream,
     client_id: String,
-    clients: Arc<RwLock<HashMap<String, Client>>>,
+    clients: ClientRegistry,
     broadcast_tx: broadcast::Sender<Envelope>,
 ) -> Result<()> {
     let ws_stream = tokio_tungstenite::accept_async(stream)
@@ -248,19 +255,16 @@ async fn handle_websocket_connection(
     let (mut ws_tx, mut ws_rx) = ws_stream.split();
     let (client_tx, mut client_rx) = mpsc::channel::<Envelope>(100);
 
-    // Register client
-    {
-        let mut clients = clients.write().await;
-        clients.insert(
-            client_id.clone(),
-            Client {
-                id: client_id.clone(),
-                tx: client_tx,
-                subscriptions: HashSet::new(),
-                patterns: HashSet::new(),
-            },
-        );
-    }
+    // Register client using DashMap (no write lock needed)
+    clients.insert(
+        client_id.clone(),
+        Client {
+            id: client_id.clone(),
+            tx: client_tx,
+            subscriptions: HashSet::new(),
+            patterns: HashSet::new(),
+        },
+    );
 
     let mut broadcast_rx = broadcast_tx.subscribe();
 
@@ -301,10 +305,10 @@ async fn handle_websocket_connection(
             msg = broadcast_rx.recv() => {
                 match msg {
                     Ok(envelope) => {
-                        let clients = clients.read().await;
-                        if let Some(client) = clients.get(&client_id) {
-                            if should_deliver(&envelope, client) {
-                                info!("EVENT BUS: Delivering '{}' to client '{}'", envelope.topic, client_id);
+                        // Check delivery using DashMap get (no lock)
+                        if let Some(client_ref) = clients.get(&client_id) {
+                            if should_deliver(&envelope, client_ref.value()) {
+                                debug!("EVENT BUS: Delivering '{}' to client '{}'", envelope.topic, client_id);
                                 let mut buf = Vec::new();
                                 envelope.encode(&mut buf)?;
                                 if let Err(e) = ws_tx.send(WsMessage::Binary(buf.into())).await {
@@ -324,11 +328,8 @@ async fn handle_websocket_connection(
         }
     }
 
-    // Unregister client
-    {
-        let mut clients = clients.write().await;
-        clients.remove(&client_id);
-    }
+    // Unregister client using DashMap (no write lock needed)
+    clients.remove(&client_id);
 
     info!("Client {} disconnected", client_id);
     Ok(())
@@ -338,7 +339,7 @@ async fn handle_websocket_connection(
 async fn handle_unix_connection(
     stream: tokio::net::UnixStream,
     client_id: String,
-    clients: Arc<RwLock<HashMap<String, Client>>>,
+    clients: ClientRegistry,
     broadcast_tx: broadcast::Sender<Envelope>,
 ) -> Result<()> {
     let ws_stream = tokio_tungstenite::client_async("ws://localhost/", stream)
@@ -348,19 +349,16 @@ async fn handle_unix_connection(
     let (mut ws_tx, mut ws_rx) = ws_stream.split();
     let (client_tx, mut client_rx) = mpsc::channel::<Envelope>(100);
 
-    // Register client
-    {
-        let mut clients = clients.write().await;
-        clients.insert(
-            client_id.clone(),
-            Client {
-                id: client_id.clone(),
-                tx: client_tx,
-                subscriptions: HashSet::new(),
-                patterns: HashSet::new(),
-            },
-        );
-    }
+    // Register client using DashMap (no write lock needed)
+    clients.insert(
+        client_id.clone(),
+        Client {
+            id: client_id.clone(),
+            tx: client_tx,
+            subscriptions: HashSet::new(),
+            patterns: HashSet::new(),
+        },
+    );
 
     let mut broadcast_rx = broadcast_tx.subscribe();
 
@@ -393,10 +391,10 @@ async fn handle_unix_connection(
             msg = broadcast_rx.recv() => {
                 match msg {
                     Ok(envelope) => {
-                        let clients = clients.read().await;
-                        if let Some(client) = clients.get(&client_id) {
-                            if should_deliver(&envelope, client) {
-                                info!("EVENT BUS: Delivering '{}' to Unix client '{}'", envelope.topic, client_id);
+                        // Check delivery using DashMap get (no lock)
+                        if let Some(client_ref) = clients.get(&client_id) {
+                            if should_deliver(&envelope, client_ref.value()) {
+                                debug!("EVENT BUS: Delivering '{}' to Unix client '{}'", envelope.topic, client_id);
                                 let mut buf = Vec::new();
                                 envelope.encode(&mut buf)?;
                                 if ws_tx.send(WsMessage::Binary(buf.into())).await.is_err() {
@@ -413,11 +411,8 @@ async fn handle_unix_connection(
         }
     }
 
-    // Unregister client
-    {
-        let mut clients = clients.write().await;
-        clients.remove(&client_id);
-    }
+    // Unregister client using DashMap (no write lock needed)
+    clients.remove(&client_id);
 
     info!("Unix client {} disconnected", client_id);
     Ok(())
@@ -427,15 +422,16 @@ async fn handle_unix_connection(
 async fn handle_message(
     envelope: &Envelope,
     client_id: &str,
-    clients: &Arc<RwLock<HashMap<String, Client>>>,
+    clients: &ClientRegistry,
     broadcast_tx: &broadcast::Sender<Envelope>,
 ) -> Result<()> {
     match envelope.topic.as_str() {
         "system.subscribe" => {
             if let Some(payload) = &envelope.payload {
                 if let Ok(sub) = Subscribe::decode(payload.value.as_slice()) {
-                    let mut clients = clients.write().await;
-                    if let Some(client) = clients.get_mut(client_id) {
+                    // Use DashMap get_mut for in-place modification
+                    if let Some(mut client_ref) = clients.get_mut(client_id) {
+                        let client = client_ref.value_mut();
                         for topic in sub.topics {
                             info!("Client {} subscribed to topic: {}", client_id, topic);
                             client.subscriptions.insert(topic);
@@ -451,8 +447,9 @@ async fn handle_message(
         "system.unsubscribe" => {
             if let Some(payload) = &envelope.payload {
                 if let Ok(unsub) = Unsubscribe::decode(payload.value.as_slice()) {
-                    let mut clients = clients.write().await;
-                    if let Some(client) = clients.get_mut(client_id) {
+                    // Use DashMap get_mut for in-place modification
+                    if let Some(mut client_ref) = clients.get_mut(client_id) {
+                        let client = client_ref.value_mut();
                         for topic in unsub.topics {
                             client.subscriptions.remove(&topic);
                         }
@@ -465,10 +462,10 @@ async fn handle_message(
         }
         _ => {
             // Forward message to all matching subscribers via broadcast channel
-            info!("EVENT BUS: Broadcasting message on topic '{}' from client '{}'", envelope.topic, client_id);
+            debug!("EVENT BUS: Broadcasting message on topic '{}' from client '{}'", envelope.topic, client_id);
             match broadcast_tx.send(envelope.clone()) {
                 Ok(receiver_count) => {
-                    info!("EVENT BUS: Message broadcast to {} receivers", receiver_count);
+                    debug!("EVENT BUS: Message broadcast to {} receivers", receiver_count);
                 }
                 Err(e) => {
                     warn!("EVENT BUS: Failed to broadcast message on topic {}: {}", envelope.topic, e);
@@ -510,22 +507,4 @@ fn matches_pattern(topic: &str, patterns: &HashSet<String>) -> bool {
         }
     }
     false
-}
-
-/// Generate a simple UUID v4.
-fn uuid_v4() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-
-    format!(
-        "{:08x}-{:04x}-4{:03x}-{:04x}-{:012x}",
-        now.as_secs() as u32,
-        (now.subsec_nanos() >> 16) as u16,
-        (now.subsec_nanos() & 0xFFF) as u16,
-        0x8000 | (now.as_nanos() as u16 & 0x3FFF),
-        now.as_nanos() as u64 & 0xFFFFFFFFFFFF
-    )
 }

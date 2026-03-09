@@ -1,0 +1,3852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yama Content Analyst</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      /* Refined dark palette */
+      --bg-primary: #0a0a0b;
+      --bg-secondary: #111113;
+      --bg-tertiary: #18181b;
+      --bg-elevated: #1f1f23;
+      --bg-hover: #27272a;
+
+      --border-subtle: #27272a;
+      --border-default: #3f3f46;
+
+      --text-primary: #fafafa;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
+
+      --accent-primary: #f59e0b;
+      --accent-primary-hover: #fbbf24;
+      --accent-success: #10b981;
+      --accent-error: #ef4444;
+      --accent-info: #3b82f6;
+
+      --radius-sm: 6px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --radius-xl: 16px;
+
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
+      --shadow-lg: 0 8px 24px rgba(0,0,0,0.3);
+    }
+
+    /* Light theme */
+    [data-theme="light"] {
+      --bg-primary: #ffffff;
+      --bg-secondary: #f9fafb;
+      --bg-tertiary: #f3f4f6;
+      --bg-elevated: #ffffff;
+      --bg-hover: #e5e7eb;
+
+      --border-subtle: #e5e7eb;
+      --border-default: #d1d5db;
+
+      --text-primary: #111827;
+      --text-secondary: #4b5563;
+      --text-muted: #9ca3af;
+
+      --accent-primary: #d97706;
+      --accent-primary-hover: #b45309;
+      --accent-success: #059669;
+      --accent-error: #dc2626;
+      --accent-info: #2563eb;
+
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+      --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--bg-secondary);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border-default);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-muted);
+    }
+
+    /* Animations */
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes scaleIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .animate-fade-in { animation: fadeIn 0.2s ease-out; }
+    .animate-slide-up { animation: slideUp 0.3s ease-out; }
+    .animate-slide-down { animation: slideDown 0.3s ease-out; }
+    .animate-scale-in { animation: scaleIn 0.2s ease-out; }
+    .animate-pulse { animation: pulse 2s infinite; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useCallback } = React;
+
+    // ============================================
+    // ICONS (simple SVG components)
+    // ============================================
+    const Icons = {
+      Plus: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+      ),
+      Folder: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+        </svg>
+      ),
+      Video: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/>
+          <path d="M10 8l6 4-6 4V8z" fill="currentColor"/>
+        </svg>
+      ),
+      ArrowLeft: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+      ),
+      Search: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+        </svg>
+      ),
+      Upload: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+        </svg>
+      ),
+      X: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M18 6L6 18M6 6l12 12"/>
+        </svg>
+      ),
+      Trash: () => (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+        </svg>
+      ),
+      Check: () => (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M20 6L9 17l-5-5"/>
+        </svg>
+      ),
+      AlertCircle: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
+        </svg>
+      ),
+      Sun: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+        </svg>
+      ),
+      Moon: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+        </svg>
+      ),
+      Clock: () => (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+        </svg>
+      ),
+      Send: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+        </svg>
+      ),
+      ArrowRight: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M5 12h14M12 5l7 7-7 7"/>
+        </svg>
+      ),
+      File: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
+          <path d="M13 2v7h7"/>
+        </svg>
+      ),
+      Settings: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
+        </svg>
+      ),
+      Scissors: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
+          <path d="M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12"/>
+        </svg>
+      ),
+      Camera: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+          <circle cx="12" cy="13" r="4"/>
+        </svg>
+      ),
+      FileText: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+        </svg>
+      ),
+      Eye: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+      ),
+      MessageSquare: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+        </svg>
+      ),
+      Cpu: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/>
+          <rect x="9" y="9" width="6" height="6"/>
+          <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/>
+        </svg>
+      ),
+      Sparkles: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M12 3l1.912 5.813a2 2 0 001.275 1.275L21 12l-5.813 1.912a2 2 0 00-1.275 1.275L12 21l-1.912-5.813a2 2 0 00-1.275-1.275L3 12l5.813-1.912a2 2 0 001.275-1.275L12 3z"/>
+        </svg>
+      ),
+      Zap: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+      ),
+      Tag: () => (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
+          <line x1="7" y1="7" x2="7.01" y2="7"/>
+        </svg>
+      ),
+      Download: () => (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+        </svg>
+      ),
+      Film: () => (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/>
+          <path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5"/>
+        </svg>
+      ),
+      Image: () => (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <path d="M21 15l-5-5L5 21"/>
+        </svg>
+      ),
+      BarChart: () => (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M12 20V10M18 20V4M6 20v-4"/>
+        </svg>
+      ),
+      PanelRight: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <path d="M15 3v18"/>
+        </svg>
+      ),
+      PanelLeft: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <path d="M9 3v18"/>
+        </svg>
+      ),
+      History: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M3 3v5h5"/>
+          <path d="M3.05 13A9 9 0 106 5.3L3 8"/>
+          <path d="M12 7v5l4 2"/>
+        </svg>
+      ),
+      Play: () => (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/>
+        </svg>
+      ),
+      MoreHorizontal: () => (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
+        </svg>
+      ),
+      ExternalLink: () => (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/>
+        </svg>
+      ),
+      PlusCircle: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 8v8M8 12h8"/>
+        </svg>
+      ),
+    };
+
+    // ============================================
+    // TOAST NOTIFICATION SYSTEM
+    // ============================================
+    const ToastContext = React.createContext();
+
+    function ToastProvider({ children }) {
+      const [toasts, setToasts] = useState([]);
+
+      const addToast = useCallback((message, type = 'info') => {
+        const id = Date.now();
+        setToasts(prev => [...prev, { id, message, type }]);
+        setTimeout(() => {
+          setToasts(prev => prev.filter(t => t.id !== id));
+        }, 4000);
+      }, []);
+
+      const removeToast = useCallback((id) => {
+        setToasts(prev => prev.filter(t => t.id !== id));
+      }, []);
+
+      return (
+        <ToastContext.Provider value={{ addToast }}>
+          {children}
+          <ToastContainer toasts={toasts} onRemove={removeToast} />
+        </ToastContext.Provider>
+      );
+    }
+
+    function ToastContainer({ toasts, onRemove }) {
+      return (
+        <div style={{
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          zIndex: 1000,
+        }}>
+          {toasts.map(toast => (
+            <Toast key={toast.id} {...toast} onRemove={() => onRemove(toast.id)} />
+          ))}
+        </div>
+      );
+    }
+
+    function Toast({ message, type, onRemove }) {
+      const colors = {
+        success: { bg: 'rgba(16, 185, 129, 0.15)', border: '#10b981', icon: '#10b981' },
+        error: { bg: 'rgba(239, 68, 68, 0.15)', border: '#ef4444', icon: '#ef4444' },
+        info: { bg: 'rgba(59, 130, 246, 0.15)', border: '#3b82f6', icon: '#3b82f6' },
+      };
+      const c = colors[type] || colors.info;
+
+      return (
+        <div className="animate-slide-up" style={{
+          background: 'var(--bg-elevated)',
+          border: `1px solid ${c.border}`,
+          borderRadius: 'var(--radius-md)',
+          padding: '12px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          minWidth: 300,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+        }}>
+          <span style={{ color: c.icon }}>
+            {type === 'success' ? <Icons.Check /> : type === 'error' ? <Icons.AlertCircle /> : <Icons.AlertCircle />}
+          </span>
+          <span style={{ flex: 1, fontSize: 14, color: 'var(--text-primary)' }}>{message}</span>
+          <button onClick={onRemove} style={{
+            background: 'none',
+            border: 'none',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            padding: 4,
+          }}>
+            <Icons.X />
+          </button>
+        </div>
+      );
+    }
+
+    function useToast() {
+      return React.useContext(ToastContext);
+    }
+
+    // ============================================
+    // MODAL COMPONENT
+    // ============================================
+    function Modal({ isOpen, onClose, title, children, width = 420 }) {
+      if (!isOpen) return null;
+
+      return (
+        <div className="animate-fade-in" style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100,
+          backdropFilter: 'blur(4px)',
+        }} onClick={onClose}>
+          <div className="animate-scale-in" style={{
+            background: 'var(--bg-tertiary)',
+            borderRadius: 'var(--radius-xl)',
+            border: '1px solid var(--border-subtle)',
+            width,
+            maxWidth: 'calc(100vw - 48px)',
+            maxHeight: 'calc(100vh - 48px)',
+            overflow: 'hidden',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid var(--border-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+              <h2 style={{ fontSize: 18, fontWeight: 600 }}>{title}</h2>
+              <button onClick={onClose} style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                padding: 4,
+                borderRadius: 'var(--radius-sm)',
+                transition: 'color 0.15s',
+              }} onMouseOver={e => e.target.style.color = 'var(--text-primary)'}
+                 onMouseOut={e => e.target.style.color = 'var(--text-muted)'}>
+                <Icons.X />
+              </button>
+            </div>
+            <div style={{ padding: 24 }}>
+              {children}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================
+    // BUTTON COMPONENT
+    // ============================================
+    function Button({ children, variant = 'primary', size = 'md', disabled, onClick, style = {} }) {
+      const variants = {
+        primary: {
+          background: 'var(--accent-primary)',
+          color: '#fff',
+          border: 'none',
+          hover: { background: 'var(--accent-primary-hover)' },
+        },
+        secondary: {
+          background: 'var(--bg-elevated)',
+          color: 'var(--text-primary)',
+          border: '1px solid var(--border-default)',
+          hover: { background: 'var(--bg-hover)' },
+        },
+        ghost: {
+          background: 'transparent',
+          color: 'var(--text-secondary)',
+          border: 'none',
+          hover: { background: 'var(--bg-hover)', color: 'var(--text-primary)' },
+        },
+        danger: {
+          background: 'var(--accent-error)',
+          color: '#fff',
+          border: 'none',
+          hover: { background: '#dc2626' },
+        },
+      };
+
+      const sizes = {
+        sm: { padding: '6px 12px', fontSize: 13 },
+        md: { padding: '10px 16px', fontSize: 14 },
+        lg: { padding: '12px 20px', fontSize: 15 },
+      };
+
+      const v = variants[variant];
+      const s = sizes[size];
+      const [isHovered, setIsHovered] = useState(false);
+
+      return (
+        <button
+          onClick={onClick}
+          disabled={disabled}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          style={{
+            ...s,
+            background: isHovered && !disabled ? v.hover?.background || v.background : v.background,
+            color: isHovered && !disabled ? v.hover?.color || v.color : v.color,
+            border: v.border,
+            borderRadius: 'var(--radius-md)',
+            fontWeight: 500,
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            opacity: disabled ? 0.5 : 1,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            transition: 'all 0.15s ease',
+            fontFamily: 'inherit',
+            ...style,
+          }}
+        >
+          {children}
+        </button>
+      );
+    }
+
+    // ============================================
+    // INPUT COMPONENT
+    // ============================================
+    function Input({ placeholder, value, onChange, icon, style = {} }) {
+      const [isFocused, setIsFocused] = useState(false);
+
+      return (
+        <div style={{
+          position: 'relative',
+          display: 'flex',
+          alignItems: 'center',
+        }}>
+          {icon && (
+            <span style={{
+              position: 'absolute',
+              left: 12,
+              color: 'var(--text-muted)',
+              pointerEvents: 'none',
+            }}>
+              {icon}
+            </span>
+          )}
+          <input
+            type="text"
+            placeholder={placeholder}
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            style={{
+              width: '100%',
+              padding: icon ? '10px 12px 10px 40px' : '10px 12px',
+              background: 'var(--bg-secondary)',
+              border: `1px solid ${isFocused ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--text-primary)',
+              fontSize: 14,
+              outline: 'none',
+              transition: 'border-color 0.15s',
+              fontFamily: 'inherit',
+              ...style,
+            }}
+          />
+        </div>
+      );
+    }
+
+    // ============================================
+    // TEXTAREA COMPONENT
+    // ============================================
+    function TextArea({ placeholder, value, onChange, rows = 3, style = {} }) {
+      const [isFocused, setIsFocused] = useState(false);
+
+      return (
+        <textarea
+          placeholder={placeholder}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+          rows={rows}
+          style={{
+            width: '100%',
+            padding: '10px 12px',
+            background: 'var(--bg-secondary)',
+            border: `1px solid ${isFocused ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
+            borderRadius: 'var(--radius-md)',
+            color: 'var(--text-primary)',
+            fontSize: 14,
+            outline: 'none',
+            transition: 'border-color 0.15s',
+            fontFamily: 'inherit',
+            resize: 'vertical',
+            minHeight: 80,
+            ...style,
+          }}
+        />
+      );
+    }
+
+    // ============================================
+    // TAG INPUT COMPONENT
+    // ============================================
+    function TagInput({ tags, onChange, placeholder = "Add tag..." }) {
+      const [input, setInput] = useState('');
+
+      const handleKeyDown = (e) => {
+        if (e.key === 'Enter' && input.trim()) {
+          e.preventDefault();
+          if (!tags.includes(input.trim())) {
+            onChange([...tags, input.trim()]);
+          }
+          setInput('');
+        } else if (e.key === 'Backspace' && !input && tags.length > 0) {
+          onChange(tags.slice(0, -1));
+        }
+      };
+
+      const removeTag = (index) => {
+        onChange(tags.filter((_, i) => i !== index));
+      };
+
+      return (
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 6,
+          padding: '8px 10px',
+          background: 'var(--bg-secondary)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 'var(--radius-md)',
+          minHeight: 42,
+          alignItems: 'center',
+        }}>
+          {tags.map((tag, i) => (
+            <span key={i} style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '4px 8px',
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border-default)',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: 12,
+              color: 'var(--text-primary)',
+            }}>
+              <Icons.Tag />
+              {tag}
+              <button
+                onClick={() => removeTag(i)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  padding: 0,
+                  display: 'flex',
+                  marginLeft: 2,
+                }}
+              >
+                <Icons.X />
+              </button>
+            </span>
+          ))}
+          <input
+            type="text"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={tags.length === 0 ? placeholder : ''}
+            style={{
+              flex: 1,
+              minWidth: 100,
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: 'var(--text-primary)',
+              fontSize: 14,
+              fontFamily: 'inherit',
+            }}
+          />
+        </div>
+      );
+    }
+
+    // ============================================
+    // STEP INDICATOR COMPONENT
+    // ============================================
+    function StepIndicator({ steps, currentStep }) {
+      return (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 0,
+          marginBottom: 32,
+        }}>
+          {steps.map((step, index) => {
+            const isActive = index === currentStep;
+            const isComplete = index < currentStep;
+            const isLast = index === steps.length - 1;
+
+            return (
+              <React.Fragment key={index}>
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 8,
+                }}>
+                  <div style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: '50%',
+                    background: isComplete
+                      ? 'var(--accent-success)'
+                      : isActive
+                        ? 'var(--accent-primary)'
+                        : 'var(--bg-elevated)',
+                    border: isActive || isComplete
+                      ? 'none'
+                      : '2px solid var(--border-default)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: isComplete || isActive ? '#fff' : 'var(--text-muted)',
+                    fontWeight: 600,
+                    fontSize: 14,
+                    transition: 'all 0.2s ease',
+                  }}>
+                    {isComplete ? <Icons.Check /> : index + 1}
+                  </div>
+                  <span style={{
+                    fontSize: 12,
+                    fontWeight: isActive ? 600 : 400,
+                    color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {step}
+                  </span>
+                </div>
+                {!isLast && (
+                  <div style={{
+                    width: 60,
+                    height: 2,
+                    background: isComplete
+                      ? 'var(--accent-success)'
+                      : 'var(--border-subtle)',
+                    marginBottom: 24,
+                    transition: 'background 0.2s ease',
+                  }} />
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
+      );
+    }
+
+    // ============================================
+    // DROP ZONE COMPONENT
+    // ============================================
+    function DropZone({ files, onFilesChange }) {
+      const [isDragging, setIsDragging] = useState(false);
+
+      const handleDrag = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      };
+
+      const handleDragIn = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+      };
+
+      const handleDragOut = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+      };
+
+      const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+
+        const droppedFiles = Array.from(e.dataTransfer.files).filter(
+          f => f.type.startsWith('video/')
+        );
+        if (droppedFiles.length > 0) {
+          onFilesChange([...files, ...droppedFiles.map(f => ({
+            id: Date.now() + Math.random(),
+            name: f.name,
+            size: f.size,
+            progress: 100,
+          }))]);
+        }
+      };
+
+      const handleBrowse = () => {
+        // Mock file selection
+        const mockFiles = [
+          { id: Date.now(), name: 'meeting_recording.mp4', size: 524288000, progress: 100 },
+        ];
+        onFilesChange([...files, ...mockFiles]);
+      };
+
+      const removeFile = (id) => {
+        onFilesChange(files.filter(f => f.id !== id));
+      };
+
+      const formatSize = (bytes) => {
+        if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB';
+        if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+        return (bytes / 1024).toFixed(0) + ' KB';
+      };
+
+      return (
+        <div>
+          {/* Drop area */}
+          <div
+            onDragEnter={handleDragIn}
+            onDragLeave={handleDragOut}
+            onDragOver={handleDrag}
+            onDrop={handleDrop}
+            style={{
+              border: `2px dashed ${isDragging ? 'var(--accent-primary)' : 'var(--border-default)'}`,
+              borderRadius: 'var(--radius-lg)',
+              padding: 40,
+              textAlign: 'center',
+              background: isDragging ? 'rgba(245, 158, 11, 0.05)' : 'var(--bg-secondary)',
+              transition: 'all 0.2s ease',
+              cursor: 'pointer',
+            }}
+            onClick={handleBrowse}
+          >
+            <div style={{
+              width: 56,
+              height: 56,
+              borderRadius: 'var(--radius-lg)',
+              background: 'var(--bg-elevated)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px',
+              color: isDragging ? 'var(--accent-primary)' : 'var(--text-muted)',
+            }}>
+              <Icons.Upload />
+            </div>
+            <h4 style={{
+              fontSize: 15,
+              fontWeight: 600,
+              marginBottom: 8,
+              color: 'var(--text-primary)',
+            }}>
+              {isDragging ? 'Drop videos here' : 'Drag & drop videos'}
+            </h4>
+            <p style={{
+              fontSize: 13,
+              color: 'var(--text-muted)',
+              marginBottom: 16,
+            }}>
+              or click to browse files
+            </p>
+            <span style={{
+              fontSize: 12,
+              color: 'var(--text-muted)',
+              background: 'var(--bg-elevated)',
+              padding: '4px 12px',
+              borderRadius: 'var(--radius-sm)',
+            }}>
+              MP4, MOV, AVI, MKV supported
+            </span>
+          </div>
+
+          {/* File list */}
+          {files.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{
+                fontSize: 13,
+                fontWeight: 500,
+                color: 'var(--text-secondary)',
+                marginBottom: 8,
+              }}>
+                {files.length} file{files.length !== 1 ? 's' : ''} selected
+              </div>
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                maxHeight: 200,
+                overflowY: 'auto',
+              }}>
+                {files.map(file => (
+                  <div key={file.id} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '10px 12px',
+                    background: 'var(--bg-elevated)',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-subtle)',
+                  }}>
+                    <div style={{ color: 'var(--text-muted)' }}>
+                      <Icons.Video />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontSize: 14,
+                        fontWeight: 500,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}>
+                        {file.name}
+                      </div>
+                      <div style={{
+                        fontSize: 12,
+                        color: 'var(--text-muted)',
+                      }}>
+                        {formatSize(file.size)}
+                      </div>
+                    </div>
+                    {file.progress < 100 ? (
+                      <div style={{
+                        width: 60,
+                        height: 4,
+                        background: 'var(--bg-secondary)',
+                        borderRadius: 2,
+                        overflow: 'hidden',
+                      }}>
+                        <div style={{
+                          width: `${file.progress}%`,
+                          height: '100%',
+                          background: 'var(--accent-primary)',
+                          transition: 'width 0.3s ease',
+                        }} />
+                      </div>
+                    ) : (
+                      <span style={{ color: 'var(--accent-success)' }}>
+                        <Icons.Check />
+                      </span>
+                    )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); removeFile(file.id); }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--text-muted)',
+                        cursor: 'pointer',
+                        padding: 4,
+                      }}
+                    >
+                      <Icons.X />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ============================================
+    // PRESET ILLUSTRATION COMPONENTS
+    // ============================================
+    const PresetIllustrations = {
+      'video-analyst': () => (
+        <svg width="100%" height="80" viewBox="0 0 280 80" fill="none">
+          {/* Video frame */}
+          <rect x="10" y="15" width="50" height="35" rx="4" fill="var(--bg-elevated)" stroke="var(--accent-primary)" strokeWidth="1.5"/>
+          <circle cx="35" cy="32" r="8" fill="var(--accent-primary)" fillOpacity="0.3"/>
+          <path d="M32 29l8 3-8 3V29z" fill="var(--accent-primary)"/>
+
+          {/* Arrow 1 */}
+          <path d="M70 32h30" stroke="var(--text-muted)" strokeWidth="1.5" strokeDasharray="3 2"/>
+          <path d="M95 28l8 4-8 4" stroke="var(--text-muted)" strokeWidth="1.5" fill="none"/>
+
+          {/* Detection boxes */}
+          <rect x="115" y="10" width="55" height="45" rx="4" fill="var(--bg-elevated)" stroke="var(--border-default)" strokeWidth="1"/>
+          <rect x="122" y="16" width="18" height="24" rx="2" stroke="var(--accent-success)" strokeWidth="1.5" fill="none"/>
+          <rect x="144" y="22" width="12" height="14" rx="1" stroke="var(--accent-info)" strokeWidth="1.5" fill="none"/>
+          <rect x="125" y="42" width="40" height="8" rx="1" fill="var(--text-muted)" fillOpacity="0.3"/>
+
+          {/* Arrow 2 */}
+          <path d="M180 32h30" stroke="var(--text-muted)" strokeWidth="1.5" strokeDasharray="3 2"/>
+          <path d="M205 28l8 4-8 4" stroke="var(--text-muted)" strokeWidth="1.5" fill="none"/>
+
+          {/* Extracted clips */}
+          <rect x="225" y="8" width="45" height="20" rx="3" fill="var(--accent-primary)" fillOpacity="0.2" stroke="var(--accent-primary)" strokeWidth="1"/>
+          <rect x="228" y="11" width="14" height="14" rx="2" fill="var(--accent-primary)" fillOpacity="0.5"/>
+          <rect x="225" y="35" width="45" height="20" rx="3" fill="var(--accent-success)" fillOpacity="0.2" stroke="var(--accent-success)" strokeWidth="1"/>
+          <rect x="228" y="38" width="14" height="14" rx="2" fill="var(--accent-success)" fillOpacity="0.5"/>
+
+          {/* Labels */}
+          <text x="35" y="72" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Video</text>
+          <text x="142" y="72" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Detect</text>
+          <text x="247" y="72" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Clips</text>
+        </svg>
+      ),
+      'document-reporter': () => (
+        <svg width="100%" height="80" viewBox="0 0 280 80" fill="none">
+          {/* Screen with slides */}
+          <rect x="10" y="12" width="55" height="40" rx="3" fill="var(--bg-elevated)" stroke="var(--border-default)" strokeWidth="1"/>
+          <rect x="15" y="17" width="20" height="14" rx="1" fill="var(--accent-info)" fillOpacity="0.3"/>
+          <rect x="38" y="17" width="22" height="3" rx="1" fill="var(--text-muted)" fillOpacity="0.5"/>
+          <rect x="38" y="23" width="18" height="2" rx="1" fill="var(--text-muted)" fillOpacity="0.3"/>
+          <rect x="38" y="28" width="20" height="2" rx="1" fill="var(--text-muted)" fillOpacity="0.3"/>
+          <rect x="15" y="35" width="45" height="12" rx="1" fill="var(--accent-primary)" fillOpacity="0.2"/>
+
+          {/* Arrow */}
+          <path d="M75 32h35" stroke="var(--text-muted)" strokeWidth="1.5" strokeDasharray="3 2"/>
+          <path d="M105 28l8 4-8 4" stroke="var(--text-muted)" strokeWidth="1.5" fill="none"/>
+
+          {/* OCR extraction */}
+          <rect x="125" y="10" width="50" height="45" rx="3" fill="var(--bg-elevated)" stroke="var(--accent-primary)" strokeWidth="1.5"/>
+          <rect x="132" y="16" width="36" height="3" rx="1" fill="var(--accent-primary)"/>
+          <rect x="132" y="22" width="30" height="2" rx="1" fill="var(--text-muted)" fillOpacity="0.5"/>
+          <rect x="132" y="27" width="34" height="2" rx="1" fill="var(--text-muted)" fillOpacity="0.5"/>
+          <rect x="132" y="32" width="28" height="2" rx="1" fill="var(--text-muted)" fillOpacity="0.5"/>
+          <rect x="132" y="40" width="36" height="10" rx="1" fill="var(--accent-success)" fillOpacity="0.2" stroke="var(--accent-success)" strokeWidth="0.5"/>
+
+          {/* Arrow */}
+          <path d="M185 32h35" stroke="var(--text-muted)" strokeWidth="1.5" strokeDasharray="3 2"/>
+          <path d="M215 28l8 4-8 4" stroke="var(--text-muted)" strokeWidth="1.5" fill="none"/>
+
+          {/* Document output */}
+          <rect x="230" y="8" width="40" height="50" rx="2" fill="var(--bg-elevated)" stroke="var(--accent-success)" strokeWidth="1.5"/>
+          <rect x="236" y="14" width="28" height="4" rx="1" fill="var(--accent-success)"/>
+          <rect x="236" y="22" width="24" height="2" rx="1" fill="var(--text-muted)" fillOpacity="0.5"/>
+          <rect x="236" y="27" width="26" height="2" rx="1" fill="var(--text-muted)" fillOpacity="0.5"/>
+          <rect x="236" y="32" width="22" height="2" rx="1" fill="var(--text-muted)" fillOpacity="0.5"/>
+          <rect x="236" y="40" width="28" height="12" rx="1" fill="var(--accent-info)" fillOpacity="0.2"/>
+
+          {/* Labels */}
+          <text x="37" y="72" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Capture</text>
+          <text x="150" y="72" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Extract</text>
+          <text x="250" y="72" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Report</text>
+        </svg>
+      ),
+      'quick-search': () => (
+        <svg width="100%" height="80" viewBox="0 0 280 80" fill="none">
+          {/* Search bar */}
+          <rect x="40" y="20" width="100" height="28" rx="14" fill="var(--bg-elevated)" stroke="var(--accent-primary)" strokeWidth="1.5"/>
+          <circle cx="58" cy="34" r="8" stroke="var(--accent-primary)" strokeWidth="1.5" fill="none"/>
+          <path d="M64 40l4 4" stroke="var(--accent-primary)" strokeWidth="1.5"/>
+          <rect x="75" y="30" width="55" height="8" rx="4" fill="var(--text-muted)" fillOpacity="0.3"/>
+
+          {/* Arrow */}
+          <path d="M150 34h25" stroke="var(--text-muted)" strokeWidth="1.5" strokeDasharray="3 2"/>
+          <path d="M170 30l8 4-8 4" stroke="var(--text-muted)" strokeWidth="1.5" fill="none"/>
+
+          {/* Results grid */}
+          <rect x="185" y="10" width="24" height="18" rx="2" fill="var(--accent-primary)" fillOpacity="0.3" stroke="var(--accent-primary)" strokeWidth="1"/>
+          <rect x="213" y="10" width="24" height="18" rx="2" fill="var(--bg-elevated)" stroke="var(--border-default)" strokeWidth="1"/>
+          <rect x="241" y="10" width="24" height="18" rx="2" fill="var(--bg-elevated)" stroke="var(--border-default)" strokeWidth="1"/>
+          <rect x="185" y="32" width="24" height="18" rx="2" fill="var(--bg-elevated)" stroke="var(--border-default)" strokeWidth="1"/>
+          <rect x="213" y="32" width="24" height="18" rx="2" fill="var(--accent-success)" fillOpacity="0.3" stroke="var(--accent-success)" strokeWidth="1"/>
+          <rect x="241" y="32" width="24" height="18" rx="2" fill="var(--bg-elevated)" stroke="var(--border-default)" strokeWidth="1"/>
+
+          {/* Labels */}
+          <text x="90" y="68" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Search</text>
+          <text x="220" y="68" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Results</text>
+        </svg>
+      ),
+      'custom': () => (
+        <svg width="100%" height="80" viewBox="0 0 280 80" fill="none">
+          {/* Puzzle pieces */}
+          <g transform="translate(60, 15)">
+            {/* Piece 1 */}
+            <path d="M0 10h20v-5a5 5 0 0110 0v5h20v20h-5a5 5 0 000 10h5v20H0V10z" fill="var(--accent-primary)" fillOpacity="0.3" stroke="var(--accent-primary)" strokeWidth="1.5"/>
+          </g>
+          <g transform="translate(110, 15)">
+            {/* Piece 2 */}
+            <path d="M0 10h5a5 5 0 010 10h-5v20h20v5a5 5 0 0010 0v-5h20V10H0z" fill="var(--accent-info)" fillOpacity="0.3" stroke="var(--accent-info)" strokeWidth="1.5"/>
+          </g>
+          <g transform="translate(110, 45)">
+            {/* Piece 3 */}
+            <path d="M0 0h5a5 5 0 010-10h-5v0h20v5a5 5 0 0010 0v-5h20v20H0V0z" fill="var(--accent-success)" fillOpacity="0.3" stroke="var(--accent-success)" strokeWidth="1.5"/>
+          </g>
+
+          {/* Plus icon */}
+          <circle cx="220" cy="35" r="18" fill="var(--bg-elevated)" stroke="var(--border-default)" strokeWidth="1.5"/>
+          <path d="M220 27v16M212 35h16" stroke="var(--text-muted)" strokeWidth="2"/>
+
+          {/* Label */}
+          <text x="140" y="75" fill="var(--text-muted)" fontSize="9" textAnchor="middle">Build your stack</text>
+        </svg>
+      ),
+    };
+
+    // ============================================
+    // MODEL CHIP COMPONENT
+    // ============================================
+    function ModelChip({ model }) {
+      return (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '10px 14px',
+          background: 'var(--bg-secondary)',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--border-subtle)',
+        }}>
+          <span style={{ fontSize: 16 }}>{model.icon}</span>
+          <div style={{ flex: 1 }}>
+            <div style={{
+              fontSize: 13,
+              fontWeight: 500,
+              color: 'var(--text-primary)',
+            }}>
+              {model.name}
+            </div>
+            <div style={{
+              fontSize: 11,
+              color: 'var(--text-muted)',
+            }}>
+              {model.role}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================
+    // PRESET CARD COMPONENT
+    // ============================================
+    function PresetCard({ preset, selected, expanded, onSelect, onToggleExpand }) {
+      const [isHovered, setIsHovered] = useState(false);
+      const Illustration = PresetIllustrations[preset.id];
+
+      const badgeColors = {
+        'RECOMMENDED': { bg: 'var(--accent-primary)', text: '#fff' },
+        'FAST': { bg: 'var(--accent-success)', text: '#fff' },
+        'ADVANCED': { bg: 'var(--accent-info)', text: '#fff' },
+      };
+
+      return (
+        <div
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          style={{
+            background: selected
+              ? 'rgba(245, 158, 11, 0.08)'
+              : isHovered
+                ? 'var(--bg-elevated)'
+                : 'var(--bg-tertiary)',
+            border: selected
+              ? '2px solid var(--accent-primary)'
+              : '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-xl)',
+            overflow: 'hidden',
+            transition: 'all 0.2s ease',
+            cursor: 'pointer',
+          }}
+          onClick={() => onSelect(preset.id)}
+        >
+          {/* Illustration */}
+          <div style={{
+            padding: '24px 20px 16px',
+            background: selected
+              ? 'rgba(245, 158, 11, 0.05)'
+              : 'var(--bg-secondary)',
+            borderBottom: '1px solid var(--border-subtle)',
+          }}>
+            {Illustration && <Illustration />}
+          </div>
+
+          {/* Content */}
+          <div style={{ padding: '20px 24px' }}>
+            {/* Header */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 12,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <h4 style={{
+                  fontSize: 18,
+                  fontWeight: 600,
+                  color: 'var(--text-primary)',
+                  margin: 0,
+                }}>
+                  {preset.name}
+                </h4>
+                {preset.badge && (
+                  <span style={{
+                    padding: '3px 8px',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    background: badgeColors[preset.badge]?.bg || 'var(--bg-elevated)',
+                    color: badgeColors[preset.badge]?.text || 'var(--text-primary)',
+                  }}>
+                    {preset.badge}
+                  </span>
+                )}
+              </div>
+
+              {/* Radio indicator */}
+              <div style={{
+                width: 22,
+                height: 22,
+                borderRadius: '50%',
+                border: selected
+                  ? '2px solid var(--accent-primary)'
+                  : '2px solid var(--border-default)',
+                background: selected ? 'var(--accent-primary)' : 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s ease',
+                flexShrink: 0,
+              }}>
+                {selected && (
+                  <div style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: '#fff',
+                  }} />
+                )}
+              </div>
+            </div>
+
+            {/* Tagline */}
+            <p style={{
+              fontSize: 14,
+              color: 'var(--text-secondary)',
+              lineHeight: 1.5,
+              marginBottom: 16,
+            }}>
+              {preset.tagline}
+            </p>
+
+            {/* Capabilities */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: 'var(--text-muted)',
+                marginBottom: 10,
+                textTransform: 'uppercase',
+                letterSpacing: '0.03em',
+              }}>
+                What you can do:
+              </div>
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+              }}>
+                {preset.capabilities.map((cap, i) => (
+                  <div key={i} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    fontSize: 13,
+                    color: 'var(--text-primary)',
+                  }}>
+                    <span style={{ color: 'var(--accent-success)', fontSize: 14 }}>✓</span>
+                    {cap}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Expandable model list */}
+            {preset.models.length > 0 && (
+              <div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onToggleExpand(preset.id); }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    background: 'none',
+                    border: 'none',
+                    padding: '6px 0',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: 'var(--accent-primary)',
+                    cursor: 'pointer',
+                    transition: 'color 0.15s',
+                  }}
+                >
+                  <span style={{
+                    display: 'inline-block',
+                    transition: 'transform 0.2s',
+                    transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                  }}>▶</span>
+                  Included Models ({preset.models.length})
+                </button>
+
+                {expanded && (
+                  <div style={{
+                    marginTop: 12,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    padding: '12px',
+                    background: 'var(--bg-secondary)',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-subtle)',
+                  }}>
+                    {preset.models.map((model, i) => (
+                      <ModelChip key={i} model={model} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Footer info */}
+            <div style={{
+              marginTop: 16,
+              paddingTop: 16,
+              borderTop: '1px solid var(--border-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16,
+              fontSize: 12,
+              color: 'var(--text-muted)',
+            }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Icons.Folder /> {preset.downloadSize}
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Icons.Cpu /> {preset.requirements}
+              </span>
+            </div>
+          </div>
+
+          {/* Configure arrow for custom preset */}
+          {preset.isCustom && (
+            <div style={{
+              padding: '12px 24px',
+              borderTop: '1px solid var(--border-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              color: 'var(--accent-primary)',
+              fontSize: 13,
+              fontWeight: 500,
+            }}>
+              Configure <Icons.ArrowRight />
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ============================================
+    // TOOL TOGGLE COMPONENT
+    // ============================================
+    function ToolToggle({ tool, enabled, onToggle }) {
+      const [isHovered, setIsHovered] = useState(false);
+
+      return (
+        <div
+          onClick={onToggle}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '14px 16px',
+            background: enabled
+              ? 'rgba(16, 185, 129, 0.08)'
+              : isHovered
+                ? 'var(--bg-elevated)'
+                : 'var(--bg-tertiary)',
+            border: enabled
+              ? '1px solid var(--accent-success)'
+              : '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-md)',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <div style={{
+            width: 36,
+            height: 36,
+            borderRadius: 'var(--radius-md)',
+            background: enabled ? 'var(--accent-success)' : 'var(--bg-elevated)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: enabled ? '#fff' : 'var(--text-muted)',
+            transition: 'all 0.15s ease',
+          }}>
+            {tool.icon}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{
+              fontSize: 14,
+              fontWeight: 500,
+              color: 'var(--text-primary)',
+              marginBottom: 2,
+            }}>
+              {tool.name}
+            </div>
+            <div style={{
+              fontSize: 12,
+              color: 'var(--text-muted)',
+            }}>
+              {tool.description}
+            </div>
+          </div>
+          <div style={{
+            width: 44,
+            height: 24,
+            borderRadius: 12,
+            background: enabled ? 'var(--accent-success)' : 'var(--bg-secondary)',
+            position: 'relative',
+            transition: 'background 0.15s ease',
+          }}>
+            <div style={{
+              width: 18,
+              height: 18,
+              borderRadius: '50%',
+              background: '#fff',
+              position: 'absolute',
+              top: 3,
+              left: enabled ? 23 : 3,
+              transition: 'left 0.15s ease',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+            }} />
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================
+    // PROJECT WIZARD COMPONENT
+    // ============================================
+    function ProjectWizard({ isOpen, onClose, onComplete }) {
+      const [currentStep, setCurrentStep] = useState(0);
+      const [projectData, setProjectData] = useState({
+        name: '',
+        description: '',
+        tags: [],
+        files: [],
+        selectedPreset: 'video-analyst',
+        expandedPreset: null,
+        enabledTools: ['clip', 'screenshot', 'transcript'],
+      });
+      const { addToast } = useToast();
+
+      const steps = ['Details', 'Videos', 'Models', 'Tools', 'Review'];
+
+      // Agent Presets - bundled model configurations for specific workflows
+      const agentPresets = [
+        {
+          id: 'video-analyst',
+          name: 'Video Analyst',
+          badge: 'RECOMMENDED',
+          tagline: 'Comprehensive video understanding with object detection, scene analysis, and intelligent clip extraction.',
+          capabilities: [
+            'Find specific moments, objects, and people',
+            'Detect and track objects across frames',
+            'Analyze body language and gestures',
+            'Auto-extract relevant clips to folders',
+            'Search by describing what you\'re looking for',
+          ],
+          models: [
+            { icon: '🧠', name: 'Qwen2.5-VL-3B', role: 'Scene understanding + reasoning' },
+            { icon: '📦', name: 'YOLOv8-n', role: 'Object detection (people, items)' },
+            { icon: '🏃', name: 'RTMPose-m', role: 'Pose estimation + gestures' },
+            { icon: '🔍', name: 'CLIP ViT-B/32', role: 'Visual search embeddings' },
+          ],
+          downloadSize: '4.2 GB',
+          requirements: 'M1+ Mac, 8GB RAM',
+        },
+        {
+          id: 'document-reporter',
+          name: 'Document & Meeting Reporter',
+          badge: null,
+          tagline: 'Extract information from presentations, meetings, and generate formatted reports with your findings.',
+          capabilities: [
+            'Read slides, whiteboards, and documents in video',
+            'Extract tables, charts, and diagrams',
+            'Transcribe speech with speaker identification',
+            'Generate meeting summaries and action items',
+            'Export to PDF reports or slide decks',
+          ],
+          models: [
+            { icon: '📄', name: 'SmolDockling', role: 'Document layout + OCR' },
+            { icon: '🎙️', name: 'Whisper-base.en', role: 'Speech transcription' },
+            { icon: '🧠', name: 'Gemma-3-4B', role: 'Reasoning + summarization' },
+            { icon: '🔍', name: 'CLIP ViT-B/32', role: 'Visual search embeddings' },
+          ],
+          downloadSize: '5.8 GB',
+          requirements: 'M1+ Mac, 16GB RAM',
+        },
+        {
+          id: 'quick-search',
+          name: 'Quick Search',
+          badge: 'FAST',
+          tagline: 'Fast visual search without heavy analysis. Perfect for finding specific moments quickly.',
+          capabilities: [
+            'Search videos by describing scenes',
+            'Find similar frames across your library',
+            'Basic transcription search',
+            'Quick clip extraction',
+          ],
+          models: [
+            { icon: '🔍', name: 'CLIP ViT-B/32', role: 'Visual search embeddings' },
+            { icon: '🎙️', name: 'Whisper-tiny.en', role: 'Fast basic transcription' },
+          ],
+          downloadSize: '500 MB',
+          requirements: 'Any Mac',
+        },
+        {
+          id: 'custom',
+          name: 'Configure Custom Agent',
+          badge: 'ADVANCED',
+          tagline: 'Build your own model stack. Select individual models and configure how they work together.',
+          capabilities: [
+            'Specific domain expertise (medical, legal, etc.)',
+            'Custom detection models you\'ve trained',
+            'Specialized workflows not covered by presets',
+            'API-based models (GPT-4V, Claude Vision)',
+          ],
+          models: [],
+          downloadSize: 'Varies',
+          requirements: 'Depends on selection',
+          isCustom: true,
+        },
+      ];
+
+      const availableTools = [
+        {
+          id: 'clip',
+          name: 'Clip Extraction',
+          icon: <Icons.Scissors />,
+          description: 'Extract video segments based on timestamps',
+        },
+        {
+          id: 'screenshot',
+          name: 'Screenshot Capture',
+          icon: <Icons.Camera />,
+          description: 'Capture frames at specific moments',
+        },
+        {
+          id: 'transcript',
+          name: 'Transcript Search',
+          icon: <Icons.FileText />,
+          description: 'Search through video transcripts and captions',
+        },
+        {
+          id: 'visual',
+          name: 'Visual Search',
+          icon: <Icons.Eye />,
+          description: 'Find moments by visual content description',
+        },
+        {
+          id: 'summary',
+          name: 'Summary Generation',
+          icon: <Icons.MessageSquare />,
+          description: 'Generate summaries and key takeaways',
+        },
+      ];
+
+      const updateData = (key, value) => {
+        setProjectData(prev => ({ ...prev, [key]: value }));
+      };
+
+      const selectPreset = (presetId) => {
+        setProjectData(prev => ({
+          ...prev,
+          selectedPreset: presetId,
+        }));
+      };
+
+      const togglePresetExpand = (presetId) => {
+        setProjectData(prev => ({
+          ...prev,
+          expandedPreset: prev.expandedPreset === presetId ? null : presetId,
+        }));
+      };
+
+      const toggleTool = (toolId) => {
+        setProjectData(prev => {
+          const isEnabled = prev.enabledTools.includes(toolId);
+          return {
+            ...prev,
+            enabledTools: isEnabled
+              ? prev.enabledTools.filter(id => id !== toolId)
+              : [...prev.enabledTools, toolId],
+          };
+        });
+      };
+
+      const canProceed = () => {
+        switch (currentStep) {
+          case 0: return projectData.name.trim().length > 0;
+          case 1: return true; // Files are optional
+          case 2: return projectData.selectedPreset !== null;
+          case 3: return projectData.enabledTools.length > 0;
+          case 4: return true;
+          default: return false;
+        }
+      };
+
+      const handleNext = () => {
+        if (currentStep < steps.length - 1) {
+          setCurrentStep(prev => prev + 1);
+        } else {
+          handleComplete();
+        }
+      };
+
+      const handleBack = () => {
+        if (currentStep > 0) {
+          setCurrentStep(prev => prev - 1);
+        }
+      };
+
+      const handleComplete = () => {
+        onComplete(projectData);
+        addToast('Project created successfully!', 'success');
+        handleClose();
+      };
+
+      const handleClose = () => {
+        setCurrentStep(0);
+        setProjectData({
+          name: '',
+          description: '',
+          tags: [],
+          files: [],
+          selectedPreset: 'video-analyst',
+          expandedPreset: null,
+          enabledTools: ['clip', 'screenshot', 'transcript'],
+        });
+        onClose();
+      };
+
+      if (!isOpen) return null;
+
+      return (
+        <div className="animate-fade-in" style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100,
+          backdropFilter: 'blur(8px)',
+        }} onClick={handleClose}>
+          <div className="animate-scale-in" style={{
+            background: 'var(--bg-primary)',
+            borderRadius: 'var(--radius-xl)',
+            border: '1px solid var(--border-subtle)',
+            width: 680,
+            maxWidth: 'calc(100vw - 48px)',
+            maxHeight: 'calc(100vh - 48px)',
+            overflow: 'hidden',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+            display: 'flex',
+            flexDirection: 'column',
+          }} onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid var(--border-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'var(--bg-secondary)',
+            }}>
+              <div>
+                <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>
+                  Create New Project
+                </h2>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                  Configure your video analysis project
+                </p>
+              </div>
+              <button onClick={handleClose} style={{
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-subtle)',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                padding: 8,
+                borderRadius: 'var(--radius-md)',
+                transition: 'all 0.15s',
+              }} onMouseOver={e => {
+                e.target.style.background = 'var(--bg-hover)';
+                e.target.style.color = 'var(--text-primary)';
+              }} onMouseOut={e => {
+                e.target.style.background = 'var(--bg-tertiary)';
+                e.target.style.color = 'var(--text-muted)';
+              }}>
+                <Icons.X />
+              </button>
+            </div>
+
+            {/* Step Indicator */}
+            <div style={{ padding: '24px 24px 0' }}>
+              <StepIndicator steps={steps} currentStep={currentStep} />
+            </div>
+
+            {/* Content */}
+            <div style={{
+              flex: 1,
+              overflow: 'auto',
+              padding: '0 24px 24px',
+            }}>
+              {/* Step 1: Project Details */}
+              {currentStep === 0 && (
+                <div className="animate-fade-in">
+                  <div style={{ marginBottom: 20 }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: 'var(--text-secondary)',
+                      marginBottom: 8,
+                    }}>
+                      Project Name <span style={{ color: 'var(--accent-error)' }}>*</span>
+                    </label>
+                    <Input
+                      placeholder="e.g., Q4 Planning Videos"
+                      value={projectData.name}
+                      onChange={(v) => updateData('name', v)}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: 20 }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: 'var(--text-secondary)',
+                      marginBottom: 8,
+                    }}>
+                      Description
+                    </label>
+                    <TextArea
+                      placeholder="What is this project about? (optional)"
+                      value={projectData.description}
+                      onChange={(v) => updateData('description', v)}
+                      rows={3}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: 'var(--text-secondary)',
+                      marginBottom: 8,
+                    }}>
+                      Tags
+                    </label>
+                    <TagInput
+                      tags={projectData.tags}
+                      onChange={(v) => updateData('tags', v)}
+                      placeholder="Press Enter to add tags..."
+                    />
+                    <p style={{
+                      fontSize: 12,
+                      color: 'var(--text-muted)',
+                      marginTop: 6,
+                    }}>
+                      Tags help organize and filter your projects
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 2: Import Videos */}
+              {currentStep === 1 && (
+                <div className="animate-fade-in">
+                  <DropZone
+                    files={projectData.files}
+                    onFilesChange={(files) => updateData('files', files)}
+                  />
+
+                  {projectData.files.length === 0 && (
+                    <div style={{
+                      marginTop: 24,
+                      padding: 16,
+                      background: 'var(--bg-tertiary)',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-subtle)',
+                    }}>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        marginBottom: 8,
+                      }}>
+                        <Icons.AlertCircle />
+                        <span style={{
+                          fontSize: 13,
+                          fontWeight: 500,
+                          color: 'var(--text-primary)',
+                        }}>
+                          No videos? No problem!
+                        </span>
+                      </div>
+                      <p style={{
+                        fontSize: 13,
+                        color: 'var(--text-muted)',
+                        lineHeight: 1.5,
+                      }}>
+                        You can create the project now and import videos later.
+                        This allows you to configure your models and tools first.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Step 3: Choose Agent Preset */}
+              {currentStep === 2 && (
+                <div className="animate-fade-in">
+                  <div style={{ marginBottom: 24 }}>
+                    <h3 style={{
+                      fontSize: 16,
+                      fontWeight: 600,
+                      color: 'var(--text-primary)',
+                      marginBottom: 8,
+                    }}>
+                      Choose your agent setup
+                    </h3>
+                    <p style={{
+                      fontSize: 14,
+                      color: 'var(--text-secondary)',
+                      lineHeight: 1.5,
+                    }}>
+                      Select a pre-configured workflow or build your own. Each preset bundles
+                      the models needed for specific tasks.
+                    </p>
+                  </div>
+
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 16,
+                  }}>
+                    {agentPresets.map(preset => (
+                      <PresetCard
+                        key={preset.id}
+                        preset={preset}
+                        selected={projectData.selectedPreset === preset.id}
+                        expanded={projectData.expandedPreset === preset.id}
+                        onSelect={selectPreset}
+                        onToggleExpand={togglePresetExpand}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Selection summary footer */}
+                  {projectData.selectedPreset && (
+                    <div style={{
+                      marginTop: 20,
+                      padding: '14px 18px',
+                      background: 'rgba(245, 158, 11, 0.1)',
+                      border: '1px solid var(--accent-primary)',
+                      borderRadius: 'var(--radius-lg)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 'var(--radius-md)',
+                          background: 'var(--accent-primary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#fff',
+                        }}>
+                          <Icons.Check />
+                        </div>
+                        <div>
+                          <div style={{
+                            fontSize: 14,
+                            fontWeight: 600,
+                            color: 'var(--text-primary)',
+                          }}>
+                            {agentPresets.find(p => p.id === projectData.selectedPreset)?.name}
+                          </div>
+                          <div style={{
+                            fontSize: 12,
+                            color: 'var(--text-muted)',
+                          }}>
+                            {agentPresets.find(p => p.id === projectData.selectedPreset)?.models.length || 0} models included
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 16,
+                        fontSize: 12,
+                        color: 'var(--text-secondary)',
+                      }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Icons.Folder /> {agentPresets.find(p => p.id === projectData.selectedPreset)?.downloadSize}
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Icons.Cpu /> {agentPresets.find(p => p.id === projectData.selectedPreset)?.requirements}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Step 4: Select Tools */}
+              {currentStep === 3 && (
+                <div className="animate-fade-in">
+                  <p style={{
+                    fontSize: 14,
+                    color: 'var(--text-secondary)',
+                    marginBottom: 16,
+                    lineHeight: 1.5,
+                  }}>
+                    Enable the tools you want to use with this project.
+                    These determine what actions are available when analyzing videos.
+                  </p>
+
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 10,
+                  }}>
+                    {availableTools.map(tool => (
+                      <ToolToggle
+                        key={tool.id}
+                        tool={tool}
+                        enabled={projectData.enabledTools.includes(tool.id)}
+                        onToggle={() => toggleTool(tool.id)}
+                      />
+                    ))}
+                  </div>
+
+                  {projectData.enabledTools.length === 0 && (
+                    <div style={{
+                      marginTop: 16,
+                      padding: 12,
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid var(--accent-error)',
+                      borderRadius: 'var(--radius-md)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}>
+                      <Icons.AlertCircle />
+                      <span style={{
+                        fontSize: 13,
+                        color: 'var(--text-primary)',
+                      }}>
+                        Please enable at least one tool to continue
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Step 5: Review */}
+              {currentStep === 4 && (
+                <div className="animate-fade-in">
+                  <div style={{
+                    background: 'var(--bg-secondary)',
+                    borderRadius: 'var(--radius-lg)',
+                    border: '1px solid var(--border-subtle)',
+                    overflow: 'hidden',
+                  }}>
+                    {/* Project Details */}
+                    <div style={{
+                      padding: 20,
+                      borderBottom: '1px solid var(--border-subtle)',
+                    }}>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        marginBottom: 12,
+                        color: 'var(--text-muted)',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                      }}>
+                        <Icons.File />
+                        Project Details
+                      </div>
+                      <h3 style={{
+                        fontSize: 18,
+                        fontWeight: 600,
+                        marginBottom: 8,
+                      }}>
+                        {projectData.name}
+                      </h3>
+                      {projectData.description && (
+                        <p style={{
+                          fontSize: 14,
+                          color: 'var(--text-secondary)',
+                          marginBottom: 8,
+                          lineHeight: 1.5,
+                        }}>
+                          {projectData.description}
+                        </p>
+                      )}
+                      {projectData.tags.length > 0 && (
+                        <div style={{
+                          display: 'flex',
+                          gap: 6,
+                          flexWrap: 'wrap',
+                        }}>
+                          {projectData.tags.map((tag, i) => (
+                            <span key={i} style={{
+                              padding: '4px 8px',
+                              background: 'var(--bg-elevated)',
+                              border: '1px solid var(--border-default)',
+                              borderRadius: 'var(--radius-sm)',
+                              fontSize: 12,
+                              color: 'var(--text-secondary)',
+                            }}>
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Videos */}
+                    <div style={{
+                      padding: 20,
+                      borderBottom: '1px solid var(--border-subtle)',
+                    }}>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        marginBottom: 12,
+                        color: 'var(--text-muted)',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                      }}>
+                        <Icons.Video />
+                        Videos
+                      </div>
+                      {projectData.files.length > 0 ? (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                        }}>
+                          <span style={{
+                            fontSize: 24,
+                            fontWeight: 700,
+                            color: 'var(--accent-primary)',
+                          }}>
+                            {projectData.files.length}
+                          </span>
+                          <span style={{
+                            fontSize: 14,
+                            color: 'var(--text-secondary)',
+                          }}>
+                            video{projectData.files.length !== 1 ? 's' : ''} ready to import
+                          </span>
+                        </div>
+                      ) : (
+                        <p style={{
+                          fontSize: 14,
+                          color: 'var(--text-muted)',
+                          fontStyle: 'italic',
+                        }}>
+                          No videos selected - you can add them later
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Models */}
+                    <div style={{
+                      padding: 20,
+                      borderBottom: '1px solid var(--border-subtle)',
+                    }}>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        marginBottom: 12,
+                        color: 'var(--text-muted)',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                      }}>
+                        <Icons.Cpu />
+                        Agent Setup
+                      </div>
+                      {(() => {
+                        const preset = agentPresets.find(p => p.id === projectData.selectedPreset);
+                        if (!preset) return null;
+                        return (
+                          <div>
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 10,
+                              marginBottom: 12,
+                            }}>
+                              <span style={{
+                                padding: '8px 14px',
+                                background: 'var(--accent-primary)' + '20',
+                                border: '1px solid var(--accent-primary)50',
+                                borderRadius: 'var(--radius-md)',
+                                fontSize: 14,
+                                fontWeight: 600,
+                                color: 'var(--text-primary)',
+                              }}>
+                                {preset.name}
+                              </span>
+                              {preset.badge && (
+                                <span style={{
+                                  padding: '3px 8px',
+                                  borderRadius: 'var(--radius-sm)',
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  textTransform: 'uppercase',
+                                  background: preset.badge === 'RECOMMENDED' ? 'var(--accent-primary)' :
+                                              preset.badge === 'FAST' ? 'var(--accent-success)' : 'var(--accent-info)',
+                                  color: '#fff',
+                                }}>
+                                  {preset.badge}
+                                </span>
+                              )}
+                            </div>
+                            {preset.models.length > 0 && (
+                              <div style={{
+                                display: 'flex',
+                                gap: 6,
+                                flexWrap: 'wrap',
+                              }}>
+                                {preset.models.map((model, i) => (
+                                  <span key={i} style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 5,
+                                    padding: '4px 8px',
+                                    background: 'var(--bg-elevated)',
+                                    border: '1px solid var(--border-default)',
+                                    borderRadius: 'var(--radius-sm)',
+                                    fontSize: 12,
+                                    color: 'var(--text-secondary)',
+                                  }}>
+                                    <span>{model.icon}</span>
+                                    {model.name}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            <div style={{
+                              marginTop: 10,
+                              fontSize: 12,
+                              color: 'var(--text-muted)',
+                            }}>
+                              {preset.downloadSize} download • {preset.requirements}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Tools */}
+                    <div style={{ padding: 20 }}>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        marginBottom: 12,
+                        color: 'var(--text-muted)',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                      }}>
+                        <Icons.Settings />
+                        Enabled Tools
+                      </div>
+                      <div style={{
+                        display: 'flex',
+                        gap: 8,
+                        flexWrap: 'wrap',
+                      }}>
+                        {projectData.enabledTools.map(id => {
+                          const tool = availableTools.find(t => t.id === id);
+                          return (
+                            <span key={id} style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              padding: '6px 10px',
+                              background: 'var(--accent-success)' + '20',
+                              border: `1px solid var(--accent-success)50`,
+                              borderRadius: 'var(--radius-md)',
+                              fontSize: 13,
+                              fontWeight: 500,
+                              color: 'var(--text-primary)',
+                            }}>
+                              <span style={{ color: 'var(--accent-success)' }}>{tool.icon}</span>
+                              {tool.name}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              padding: '16px 24px',
+              borderTop: '1px solid var(--border-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'var(--bg-secondary)',
+            }}>
+              <Button
+                variant="ghost"
+                onClick={currentStep === 0 ? handleClose : handleBack}
+              >
+                {currentStep === 0 ? (
+                  'Cancel'
+                ) : (
+                  <>
+                    <Icons.ArrowLeft /> Back
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={handleNext}
+                disabled={!canProceed()}
+              >
+                {currentStep === steps.length - 1 ? (
+                  <>
+                    <Icons.Sparkles /> Create Project
+                  </>
+                ) : (
+                  <>
+                    Next <Icons.ArrowRight />
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================
+    // EMPTY STATE COMPONENT
+    // ============================================
+    function EmptyState({ icon, title, description, action }) {
+      return (
+        <div className="animate-fade-in" style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 60,
+          textAlign: 'center',
+        }}>
+          <div style={{
+            width: 64,
+            height: 64,
+            borderRadius: 'var(--radius-lg)',
+            background: 'var(--bg-elevated)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: 20,
+            color: 'var(--text-muted)',
+          }}>
+            {icon}
+          </div>
+          <h3 style={{
+            fontSize: 18,
+            fontWeight: 600,
+            color: 'var(--text-primary)',
+            marginBottom: 8,
+          }}>{title}</h3>
+          <p style={{
+            fontSize: 14,
+            color: 'var(--text-muted)',
+            maxWidth: 320,
+            lineHeight: 1.5,
+            marginBottom: action ? 24 : 0,
+          }}>{description}</p>
+          {action}
+        </div>
+      );
+    }
+
+    // ============================================
+    // PROJECT CARD COMPONENT
+    // ============================================
+    function ProjectCard({ project, onClick, onDelete }) {
+      const [isHovered, setIsHovered] = useState(false);
+      const [showDelete, setShowDelete] = useState(false);
+
+      const formatTimeAgo = (date) => {
+        const seconds = Math.floor((new Date() - date) / 1000);
+        if (seconds < 60) return 'Just now';
+        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+        return `${Math.floor(seconds / 86400)}d ago`;
+      };
+
+      return (
+        <div
+          className="animate-slide-up"
+          style={{
+            background: isHovered ? 'var(--bg-elevated)' : 'var(--bg-tertiary)',
+            borderRadius: 'var(--radius-lg)',
+            border: '1px solid var(--border-subtle)',
+            overflow: 'hidden',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            transform: isHovered ? 'translateY(-2px)' : 'none',
+            boxShadow: isHovered ? '0 8px 24px rgba(0,0,0,0.2)' : 'none',
+          }}
+          onMouseEnter={() => { setIsHovered(true); setShowDelete(true); }}
+          onMouseLeave={() => { setIsHovered(false); setShowDelete(false); }}
+          onClick={onClick}
+        >
+          {/* Thumbnail area */}
+          <div style={{
+            height: 120,
+            background: 'var(--bg-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative',
+            borderBottom: '1px solid var(--border-subtle)',
+          }}>
+            <div style={{ color: 'var(--text-muted)', opacity: 0.5 }}>
+              <Icons.Folder />
+            </div>
+
+            {/* Video count badge */}
+            <div style={{
+              position: 'absolute',
+              top: 10,
+              left: 10,
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border-subtle)',
+              padding: '4px 8px',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: 12,
+              fontWeight: 500,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              color: 'var(--text-primary)',
+              boxShadow: 'var(--shadow-sm)',
+            }}>
+              <Icons.Video /> {project.videoCount}
+            </div>
+
+            {/* Duration */}
+            {project.duration && (
+              <div style={{
+                position: 'absolute',
+                top: 10,
+                right: 10,
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-subtle)',
+                padding: '4px 8px',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: 12,
+                color: 'var(--text-secondary)',
+                boxShadow: 'var(--shadow-sm)',
+              }}>
+                {project.duration}
+              </div>
+            )}
+
+            {/* Delete button */}
+            {showDelete && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                style={{
+                  position: 'absolute',
+                  bottom: 10,
+                  right: 10,
+                  width: 32,
+                  height: 32,
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--accent-error)',
+                  border: 'none',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'transform 0.15s',
+                }}
+                onMouseOver={e => e.currentTarget.style.transform = 'scale(1.1)'}
+                onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                <Icons.Trash />
+              </button>
+            )}
+          </div>
+
+          {/* Info */}
+          <div style={{ padding: 16 }}>
+            <h3 style={{
+              fontSize: 15,
+              fontWeight: 600,
+              marginBottom: 6,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}>{project.name}</h3>
+
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 8,
+            }}>
+              <span style={{
+                fontSize: 13,
+                color: project.indexed === project.videoCount && project.videoCount > 0
+                  ? 'var(--accent-success)'
+                  : project.indexed > 0
+                    ? 'var(--accent-primary)'
+                    : 'var(--text-muted)',
+              }}>
+                {project.videoCount === 0
+                  ? 'No videos'
+                  : project.indexed === project.videoCount
+                    ? 'All indexed'
+                    : project.indexed > 0
+                      ? `${project.indexed}/${project.videoCount} indexed`
+                      : 'Not indexed'}
+              </span>
+            </div>
+
+            {/* Preset indicator */}
+            {project.preset && (
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '3px 8px',
+                background: 'var(--accent-primary)' + '15',
+                border: '1px solid var(--accent-primary)30',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: 11,
+                fontWeight: 500,
+                color: 'var(--accent-primary)',
+                marginBottom: 8,
+              }}>
+                {project.preset === 'video-analyst' && '🎬 Video Analyst'}
+                {project.preset === 'document-reporter' && '📋 Document Reporter'}
+                {project.preset === 'quick-search' && '⚡ Quick Search'}
+                {project.preset === 'custom' && '🔧 Custom'}
+              </div>
+            )}
+
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              fontSize: 12,
+              color: 'var(--text-muted)',
+            }}>
+              <Icons.Clock />
+              {formatTimeAgo(project.updatedAt)}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================
+    // DASHBOARD VIEW
+    // ============================================
+    function Dashboard({ projects, onOpenProject, onCreateProject, onDeleteProject }) {
+      const [search, setSearch] = useState('');
+      const [showWizard, setShowWizard] = useState(false);
+      const [showDeleteModal, setShowDeleteModal] = useState(null);
+      const { addToast } = useToast();
+
+      const filteredProjects = projects.filter(p =>
+        p.name.toLowerCase().includes(search.toLowerCase())
+      );
+
+      const handleCreateFromWizard = (projectData) => {
+        onCreateProject(projectData);
+      };
+
+      const handleDelete = () => {
+        if (showDeleteModal) {
+          onDeleteProject(showDeleteModal.id);
+          setShowDeleteModal(null);
+          addToast('Project deleted', 'info');
+        }
+      };
+
+      return (
+        <div style={{ padding: 32 }}>
+          {/* Header */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 32,
+          }}>
+            <div>
+              <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Projects</h1>
+              <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
+                {projects.length} project{projects.length !== 1 ? 's' : ''} • {projects.reduce((a, p) => a + p.videoCount, 0)} videos total
+              </p>
+            </div>
+            <Button onClick={() => setShowWizard(true)}>
+              <Icons.Plus /> New Project
+            </Button>
+          </div>
+
+          {/* Search */}
+          {projects.length > 0 && (
+            <div style={{ marginBottom: 24, maxWidth: 320 }}>
+              <Input
+                placeholder="Search projects..."
+                value={search}
+                onChange={setSearch}
+                icon={<Icons.Search />}
+              />
+            </div>
+          )}
+
+          {/* Projects Grid or Empty State */}
+          {projects.length === 0 ? (
+            <EmptyState
+              icon={<Icons.Folder />}
+              title="No projects yet"
+              description="Create your first project to start organizing and analyzing your video content."
+              action={
+                <Button onClick={() => setShowWizard(true)}>
+                  <Icons.Plus /> Create First Project
+                </Button>
+              }
+            />
+          ) : filteredProjects.length === 0 ? (
+            <EmptyState
+              icon={<Icons.Search />}
+              title="No results found"
+              description={`No projects match "${search}". Try a different search term.`}
+            />
+          ) : (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+              gap: 20,
+            }}>
+              {filteredProjects.map(project => (
+                <ProjectCard
+                  key={project.id}
+                  project={project}
+                  onClick={() => onOpenProject(project)}
+                  onDelete={() => setShowDeleteModal(project)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Project Creation Wizard */}
+          <ProjectWizard
+            isOpen={showWizard}
+            onClose={() => setShowWizard(false)}
+            onComplete={handleCreateFromWizard}
+          />
+
+          {/* Delete Confirmation Modal */}
+          <Modal
+            isOpen={!!showDeleteModal}
+            onClose={() => setShowDeleteModal(null)}
+            title="Delete Project"
+            width={380}
+          >
+            <p style={{ color: 'var(--text-secondary)', marginBottom: 20, lineHeight: 1.5 }}>
+              Are you sure you want to delete <strong style={{ color: 'var(--text-primary)' }}>{showDeleteModal?.name}</strong>?
+              This action cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+              <Button variant="secondary" onClick={() => setShowDeleteModal(null)}>
+                Cancel
+              </Button>
+              <Button variant="danger" onClick={handleDelete}>
+                Delete
+              </Button>
+            </div>
+          </Modal>
+        </div>
+      );
+    }
+
+    // ============================================
+    // CHAT HISTORY ITEM
+    // ============================================
+    function ChatHistoryItem({ chat, isActive, onClick }) {
+      const [isHovered, setIsHovered] = useState(false);
+
+      const formatTimeAgo = (date) => {
+        const seconds = Math.floor((new Date() - date) / 1000);
+        if (seconds < 60) return 'Just now';
+        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+        if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+        return date.toLocaleDateString();
+      };
+
+      return (
+        <div
+          onClick={onClick}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          style={{
+            padding: '12px 14px',
+            borderRadius: 'var(--radius-md)',
+            background: isActive
+              ? 'var(--accent-primary)' + '15'
+              : isHovered
+                ? 'var(--bg-elevated)'
+                : 'transparent',
+            border: isActive
+              ? '1px solid var(--accent-primary)' + '40'
+              : '1px solid transparent',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <div style={{
+            fontSize: 13,
+            fontWeight: 500,
+            color: isActive ? 'var(--accent-primary)' : 'var(--text-primary)',
+            marginBottom: 4,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}>
+            {chat.title}
+          </div>
+          <div style={{
+            fontSize: 12,
+            color: 'var(--text-muted)',
+            marginBottom: 6,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}>
+            {chat.preview}
+          </div>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: 11,
+            color: 'var(--text-muted)',
+          }}>
+            <span>{chat.messageCount} messages</span>
+            <span>{formatTimeAgo(chat.createdAt)}</span>
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================
+    // CHAT HISTORY SIDEBAR
+    // ============================================
+    function ChatHistorySidebar({ chats, activeChat, onSelectChat, onNewChat }) {
+      return (
+        <div style={{
+          width: 280,
+          borderRight: '1px solid var(--border-subtle)',
+          background: 'var(--bg-secondary)',
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+        }}>
+          {/* Header */}
+          <div style={{
+            padding: '16px',
+            borderBottom: '1px solid var(--border-subtle)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 14,
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+            }}>
+              <Icons.History />
+              Chat History
+            </div>
+            <button
+              onClick={onNewChat}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--accent-primary)',
+                border: 'none',
+                color: '#fff',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'opacity 0.15s',
+              }}
+              title="New Chat"
+            >
+              <Icons.Plus />
+            </button>
+          </div>
+
+          {/* Chat list */}
+          <div style={{
+            flex: 1,
+            overflow: 'auto',
+            padding: '8px',
+          }}>
+            {chats.length === 0 ? (
+              <div style={{
+                padding: '24px 16px',
+                textAlign: 'center',
+                color: 'var(--text-muted)',
+                fontSize: 13,
+              }}>
+                <div style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--bg-elevated)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 12px',
+                }}>
+                  <Icons.MessageSquare />
+                </div>
+                No conversations yet
+                <div style={{ marginTop: 4, fontSize: 12 }}>
+                  Start a new chat to analyze your videos
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {chats.map(chat => (
+                  <ChatHistoryItem
+                    key={chat.id}
+                    chat={chat}
+                    isActive={activeChat?.id === chat.id}
+                    onClick={() => onSelectChat(chat)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================
+    // ARTIFACT CARD
+    // ============================================
+    function ArtifactCard({ artifact, onView, onDownload }) {
+      const [isHovered, setIsHovered] = useState(false);
+
+      const getArtifactIcon = () => {
+        switch (artifact.type) {
+          case 'clip': return <Icons.Film />;
+          case 'screenshot': return <Icons.Image />;
+          case 'report': return <Icons.FileText />;
+          default: return <Icons.File />;
+        }
+      };
+
+      const getArtifactColor = () => {
+        switch (artifact.type) {
+          case 'clip': return 'var(--accent-primary)';
+          case 'screenshot': return 'var(--accent-info)';
+          case 'report': return 'var(--accent-success)';
+          default: return 'var(--text-muted)';
+        }
+      };
+
+      const formatTimeAgo = (date) => {
+        const seconds = Math.floor((new Date() - date) / 1000);
+        if (seconds < 60) return 'Just now';
+        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+        return date.toLocaleDateString();
+      };
+
+      return (
+        <div
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          style={{
+            background: isHovered ? 'var(--bg-elevated)' : 'var(--bg-tertiary)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-md)',
+            overflow: 'hidden',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          {/* Thumbnail area */}
+          <div style={{
+            height: 80,
+            background: 'var(--bg-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative',
+            borderBottom: '1px solid var(--border-subtle)',
+          }}>
+            <div style={{
+              width: 40,
+              height: 40,
+              borderRadius: 'var(--radius-md)',
+              background: getArtifactColor() + '20',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: getArtifactColor(),
+            }}>
+              {getArtifactIcon()}
+            </div>
+
+            {/* Type badge */}
+            <div style={{
+              position: 'absolute',
+              top: 8,
+              left: 8,
+              padding: '2px 6px',
+              borderRadius: 'var(--radius-sm)',
+              background: getArtifactColor(),
+              fontSize: 9,
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              color: '#fff',
+            }}>
+              {artifact.type}
+            </div>
+
+            {/* Duration for clips */}
+            {artifact.duration && (
+              <div style={{
+                position: 'absolute',
+                bottom: 8,
+                right: 8,
+                padding: '2px 6px',
+                borderRadius: 'var(--radius-sm)',
+                background: 'rgba(0,0,0,0.7)',
+                fontSize: 10,
+                color: '#fff',
+              }}>
+                {artifact.duration}
+              </div>
+            )}
+
+            {/* Hover actions */}
+            {isHovered && (
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'rgba(0,0,0,0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+              }}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onView?.(artifact); }}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--bg-elevated)',
+                    border: 'none',
+                    color: 'var(--text-primary)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  title="View"
+                >
+                  {artifact.type === 'clip' ? <Icons.Play /> : <Icons.Eye />}
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDownload?.(artifact); }}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--bg-elevated)',
+                    border: 'none',
+                    color: 'var(--text-primary)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  title="Download"
+                >
+                  <Icons.Download />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Content */}
+          <div style={{ padding: '10px 12px' }}>
+            <div style={{
+              fontSize: 12,
+              fontWeight: 500,
+              color: 'var(--text-primary)',
+              marginBottom: 4,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}>
+              {artifact.name}
+            </div>
+            <div style={{
+              fontSize: 11,
+              color: 'var(--text-muted)',
+              marginBottom: 4,
+            }}>
+              {artifact.source && `${artifact.source}`}
+              {artifact.timestamp && ` • ${artifact.timestamp}`}
+              {artifact.format && `${artifact.format}`}
+              {artifact.pages && ` • ${artifact.pages} pages`}
+            </div>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: 10,
+              color: 'var(--text-muted)',
+            }}>
+              <span>{artifact.size}</span>
+              <span>{formatTimeAgo(artifact.createdAt)}</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================
+    // ARTIFACTS PANEL
+    // ============================================
+    function ArtifactsPanel({ artifacts, onView, onDownload }) {
+      const [filter, setFilter] = useState('all');
+
+      const filteredArtifacts = filter === 'all'
+        ? artifacts
+        : artifacts.filter(a => a.type === filter);
+
+      const counts = {
+        all: artifacts.length,
+        clip: artifacts.filter(a => a.type === 'clip').length,
+        screenshot: artifacts.filter(a => a.type === 'screenshot').length,
+        report: artifacts.filter(a => a.type === 'report').length,
+      };
+
+      return (
+        <div style={{
+          width: 320,
+          borderLeft: '1px solid var(--border-subtle)',
+          background: 'var(--bg-secondary)',
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+        }}>
+          {/* Header */}
+          <div style={{
+            padding: '16px',
+            borderBottom: '1px solid var(--border-subtle)',
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 14,
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+              marginBottom: 12,
+            }}>
+              <Icons.Folder />
+              Artifacts
+              <span style={{
+                padding: '2px 6px',
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--bg-elevated)',
+                fontSize: 11,
+                color: 'var(--text-muted)',
+              }}>
+                {artifacts.length}
+              </span>
+            </div>
+
+            {/* Filter tabs */}
+            <div style={{
+              display: 'flex',
+              gap: 4,
+              background: 'var(--bg-tertiary)',
+              padding: 4,
+              borderRadius: 'var(--radius-md)',
+            }}>
+              {['all', 'clip', 'screenshot', 'report'].map(type => (
+                <button
+                  key={type}
+                  onClick={() => setFilter(type)}
+                  style={{
+                    flex: 1,
+                    padding: '6px 8px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: 'none',
+                    background: filter === type ? 'var(--bg-elevated)' : 'transparent',
+                    color: filter === type ? 'var(--text-primary)' : 'var(--text-muted)',
+                    fontSize: 11,
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                    textTransform: 'capitalize',
+                  }}
+                >
+                  {type === 'all' ? 'All' : type + 's'}
+                  {counts[type] > 0 && (
+                    <span style={{
+                      marginLeft: 4,
+                      opacity: 0.6,
+                    }}>
+                      {counts[type]}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Artifacts grid */}
+          <div style={{
+            flex: 1,
+            overflow: 'auto',
+            padding: '12px',
+          }}>
+            {filteredArtifacts.length === 0 ? (
+              <div style={{
+                padding: '32px 16px',
+                textAlign: 'center',
+                color: 'var(--text-muted)',
+                fontSize: 13,
+              }}>
+                <div style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--bg-elevated)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 12px',
+                }}>
+                  <Icons.Folder />
+                </div>
+                {filter === 'all'
+                  ? 'No artifacts yet'
+                  : `No ${filter}s yet`}
+                <div style={{ marginTop: 4, fontSize: 12 }}>
+                  Extracted clips, screenshots, and reports will appear here
+                </div>
+              </div>
+            ) : (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr',
+                gap: 12,
+              }}>
+                {filteredArtifacts.map(artifact => (
+                  <ArtifactCard
+                    key={artifact.id}
+                    artifact={artifact}
+                    onView={onView}
+                    onDownload={onDownload}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================
+    // CHAT MESSAGE COMPONENT
+    // ============================================
+    function ChatMessage({ message, isUser }) {
+      return (
+        <div style={{
+          background: isUser ? 'var(--bg-elevated)' : 'var(--bg-tertiary)',
+          borderRadius: 'var(--radius-lg)',
+          padding: 16,
+          borderLeft: isUser ? 'none' : '3px solid var(--accent-success)',
+        }}>
+          <div style={{
+            fontSize: 12,
+            fontWeight: 600,
+            marginBottom: 8,
+            color: isUser ? 'var(--accent-primary)' : 'var(--accent-success)',
+          }}>
+            {isUser ? 'You' : 'Assistant'}
+          </div>
+          <div style={{
+            fontSize: 14,
+            lineHeight: 1.6,
+            color: 'var(--text-primary)',
+            whiteSpace: 'pre-wrap',
+          }}>
+            {message.content}
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================
+    // PROJECT VIEW
+    // ============================================
+    function ProjectView({ project, onBack, onImport, onUpdateProject }) {
+      const [query, setQuery] = useState('');
+      const [activeChat, setActiveChat] = useState(null);
+      const [currentMessages, setCurrentMessages] = useState([]);
+      const [showHistory, setShowHistory] = useState(true);
+      const [showArtifacts, setShowArtifacts] = useState(true);
+      const { addToast } = useToast();
+
+      // Load chat messages when selecting a chat
+      const handleSelectChat = (chat) => {
+        setActiveChat(chat);
+        setCurrentMessages(chat.messages || []);
+      };
+
+      // Start new chat
+      const handleNewChat = () => {
+        setActiveChat(null);
+        setCurrentMessages([]);
+      };
+
+      const handleSubmit = () => {
+        if (!query.trim()) return;
+
+        if (project.indexed === 0) {
+          addToast('Please index videos before querying', 'error');
+          return;
+        }
+
+        // Add user message
+        const userMessage = { role: 'user', content: query };
+
+        // Mock AI response
+        const aiResponses = [
+          'I found 3 relevant segments across your videos. The most significant discussion occurs in the meeting recording from 12:34 to 15:22. Would you like me to extract this clip?',
+          'Based on my analysis, here are the key points mentioned:\n\n• Revenue targets for Q4: $2.4M\n• Current pipeline status: 78% coverage\n• Top priority accounts identified\n\nI can generate a detailed report if you need.',
+          'I\'ve identified 5 instances where this topic is discussed. The speakers include Sarah (3 mentions) and Mike (2 mentions). Should I show you the specific timestamps?',
+          'The video content shows a product demonstration starting at 08:45. Key features highlighted include the dashboard redesign and new analytics tools. I can extract screenshots of each feature if helpful.',
+        ];
+
+        const assistantMessage = {
+          role: 'assistant',
+          content: aiResponses[Math.floor(Math.random() * aiResponses.length)],
+        };
+
+        setCurrentMessages(prev => [...prev, userMessage, assistantMessage]);
+        setQuery('');
+
+        // If this is a new chat, create it
+        if (!activeChat) {
+          const newChat = {
+            id: 'chat-' + Date.now(),
+            title: query.slice(0, 40) + (query.length > 40 ? '...' : ''),
+            preview: query,
+            messageCount: 2,
+            createdAt: new Date(),
+            messages: [userMessage, assistantMessage],
+          };
+          setActiveChat(newChat);
+          // In a real app, this would update the project's chatHistory
+        }
+      };
+
+      const handleViewArtifact = (artifact) => {
+        addToast(`Opening ${artifact.name}...`, 'info');
+      };
+
+      const handleDownloadArtifact = (artifact) => {
+        addToast(`Downloading ${artifact.name}...`, 'success');
+      };
+
+      return (
+        <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+          {/* Header */}
+          <div style={{
+            padding: '12px 20px',
+            borderBottom: '1px solid var(--border-subtle)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'var(--bg-secondary)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Button variant="ghost" size="sm" onClick={onBack}>
+                <Icons.ArrowLeft />
+              </Button>
+              <div style={{
+                width: 1,
+                height: 20,
+                background: 'var(--border-subtle)',
+              }} />
+              <div>
+                <h1 style={{ fontSize: 16, fontWeight: 600, marginBottom: 2 }}>{project.name}</h1>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  fontSize: 12,
+                  color: 'var(--text-muted)',
+                }}>
+                  <span>{project.videoCount} videos</span>
+                  <span style={{
+                    color: project.indexed === project.videoCount
+                      ? 'var(--accent-success)'
+                      : 'var(--text-muted)',
+                  }}>
+                    {project.indexed === project.videoCount ? '✓ Indexed' : `${project.indexed}/${project.videoCount} indexed`}
+                  </span>
+                  {project.preset && (
+                    <span style={{
+                      padding: '2px 6px',
+                      background: 'var(--accent-primary)' + '20',
+                      borderRadius: 'var(--radius-sm)',
+                      color: 'var(--accent-primary)',
+                      fontSize: 10,
+                      fontWeight: 500,
+                    }}>
+                      {project.preset === 'video-analyst' && '🎬 Video Analyst'}
+                      {project.preset === 'document-reporter' && '📋 Document Reporter'}
+                      {project.preset === 'quick-search' && '⚡ Quick Search'}
+                      {project.preset === 'custom' && '🔧 Custom'}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowHistory(!showHistory)}
+                style={{ color: showHistory ? 'var(--accent-primary)' : 'var(--text-muted)' }}
+              >
+                <Icons.PanelLeft />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowArtifacts(!showArtifacts)}
+                style={{ color: showArtifacts ? 'var(--accent-primary)' : 'var(--text-muted)' }}
+              >
+                <Icons.PanelRight />
+              </Button>
+              <div style={{ width: 1, height: 20, background: 'var(--border-subtle)', margin: '0 4px' }} />
+              <Button size="sm" onClick={() => {
+                onImport?.();
+                addToast('Import dialog would open here', 'info');
+              }}>
+                <Icons.Upload /> Import
+              </Button>
+            </div>
+          </div>
+
+          {/* Main Content Area */}
+          <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+            {/* Chat History Sidebar */}
+            {showHistory && (
+              <ChatHistorySidebar
+                chats={project.chatHistory || []}
+                activeChat={activeChat}
+                onSelectChat={handleSelectChat}
+                onNewChat={handleNewChat}
+              />
+            )}
+
+            {/* Main Chat Area */}
+            <div style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              background: 'var(--bg-primary)',
+              minWidth: 0,
+            }}>
+              {/* Messages */}
+              <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
+                {project.videoCount === 0 ? (
+                  <EmptyState
+                    icon={<Icons.Video />}
+                    title="No videos yet"
+                    description="Import videos to start analyzing your content."
+                    action={
+                      <Button onClick={onImport}>
+                        <Icons.Upload /> Import Videos
+                      </Button>
+                    }
+                  />
+                ) : project.indexed === 0 ? (
+                  <EmptyState
+                    icon={<Icons.Clock />}
+                    title="Indexing required"
+                    description="Your videos need to be indexed before you can search and analyze them."
+                    action={
+                      <Button onClick={() => addToast('Indexing would start here', 'info')}>
+                        <Icons.Zap /> Start Indexing
+                      </Button>
+                    }
+                  />
+                ) : currentMessages.length === 0 ? (
+                  <div style={{
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textAlign: 'center',
+                    padding: 40,
+                  }}>
+                    <div style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: 'var(--radius-xl)',
+                      background: 'var(--accent-primary)' + '15',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginBottom: 20,
+                      color: 'var(--accent-primary)',
+                    }}>
+                      <Icons.Sparkles />
+                    </div>
+                    <h3 style={{
+                      fontSize: 18,
+                      fontWeight: 600,
+                      marginBottom: 8,
+                      color: 'var(--text-primary)',
+                    }}>
+                      {activeChat ? 'Continue the conversation' : 'Start analyzing your videos'}
+                    </h3>
+                    <p style={{
+                      fontSize: 14,
+                      color: 'var(--text-muted)',
+                      maxWidth: 400,
+                      lineHeight: 1.5,
+                      marginBottom: 24,
+                    }}>
+                      Ask questions about your video content, search for specific moments, or request summaries and reports.
+                    </p>
+                    <div style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: 8,
+                      justifyContent: 'center',
+                    }}>
+                      {[
+                        'Find all mentions of revenue',
+                        'Extract key action items',
+                        'Show frames with charts',
+                        'Summarize the meeting',
+                      ].map(suggestion => (
+                        <button
+                          key={suggestion}
+                          onClick={() => setQuery(suggestion)}
+                          style={{
+                            padding: '8px 14px',
+                            background: 'var(--bg-tertiary)',
+                            border: '1px solid var(--border-subtle)',
+                            borderRadius: 'var(--radius-md)',
+                            fontSize: 13,
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                          }}
+                          onMouseOver={e => {
+                            e.target.style.background = 'var(--bg-elevated)';
+                            e.target.style.borderColor = 'var(--accent-primary)';
+                            e.target.style.color = 'var(--text-primary)';
+                          }}
+                          onMouseOut={e => {
+                            e.target.style.background = 'var(--bg-tertiary)';
+                            e.target.style.borderColor = 'var(--border-subtle)';
+                            e.target.style.color = 'var(--text-secondary)';
+                          }}
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ maxWidth: 700, margin: '0 auto' }}>
+                    {currentMessages.map((msg, idx) => (
+                      <div key={idx} className="animate-slide-up" style={{ marginBottom: 16 }}>
+                        <ChatMessage message={msg} isUser={msg.role === 'user'} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Query Input */}
+              {project.indexed > 0 && (
+                <div style={{
+                  padding: '16px 24px',
+                  borderTop: '1px solid var(--border-subtle)',
+                  background: 'var(--bg-secondary)',
+                }}>
+                  <div style={{
+                    maxWidth: 700,
+                    margin: '0 auto',
+                    display: 'flex',
+                    gap: 12,
+                  }}>
+                    <div style={{ flex: 1 }}>
+                      <Input
+                        placeholder="Ask about your videos..."
+                        value={query}
+                        onChange={setQuery}
+                        style={{
+                          background: 'var(--bg-primary)',
+                        }}
+                      />
+                    </div>
+                    <Button onClick={handleSubmit} disabled={!query.trim()}>
+                      <Icons.Send />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Artifacts Panel */}
+            {showArtifacts && (
+              <ArtifactsPanel
+                artifacts={project.artifacts || []}
+                onView={handleViewArtifact}
+                onDownload={handleDownloadArtifact}
+              />
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================
+    // THEME CONTEXT
+    // ============================================
+    const ThemeContext = React.createContext();
+
+    function ThemeProvider({ children }) {
+      const [theme, setTheme] = useState(() => {
+        const saved = localStorage.getItem('yama-theme');
+        return saved || 'dark';
+      });
+
+      useEffect(() => {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('yama-theme', theme);
+      }, [theme]);
+
+      const toggleTheme = () => {
+        setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+      };
+
+      return (
+        <ThemeContext.Provider value={{ theme, toggleTheme }}>
+          {children}
+        </ThemeContext.Provider>
+      );
+    }
+
+    function useTheme() {
+      return React.useContext(ThemeContext);
+    }
+
+    // ============================================
+    // MAIN APP
+    // ============================================
+    function App() {
+      const [projects, setProjects] = useState([
+        {
+          id: '1',
+          name: 'Q4 Planning Review',
+          videoCount: 12,
+          indexed: 12,
+          duration: '2h 15m',
+          preset: 'video-analyst',
+          updatedAt: new Date(Date.now() - 1000 * 60 * 30),
+          chatHistory: [
+            {
+              id: 'chat-1',
+              title: 'Revenue discussion analysis',
+              preview: 'Find all moments where revenue targets are discussed...',
+              messageCount: 8,
+              createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2),
+              messages: [
+                { role: 'user', content: 'Find all moments where revenue targets are discussed' },
+                { role: 'assistant', content: 'I found 4 relevant segments across 3 videos where revenue targets are mentioned. The most detailed discussion occurs in "Q4_Planning_Session_2.mp4" from 12:34 to 15:22 where Sarah presents the quarterly projections.' },
+                { role: 'user', content: 'Extract that clip and show me the key numbers mentioned' },
+                { role: 'assistant', content: 'I\'ve extracted the clip (3:48 duration) and identified the following key figures:\n\n• Q4 Target: $2.4M\n• Current Run Rate: $1.8M\n• Gap to Close: $600K\n• Required Growth: 33%\n\nThe clip has been saved to your artifacts.' },
+              ],
+            },
+            {
+              id: 'chat-2',
+              title: 'Action items extraction',
+              preview: 'What action items were assigned in the meeting...',
+              messageCount: 5,
+              createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24),
+              messages: [
+                { role: 'user', content: 'What action items were assigned in the meeting?' },
+                { role: 'assistant', content: 'I identified 7 action items across the planning sessions:\n\n1. **Mike**: Finalize vendor contracts by Oct 15\n2. **Sarah**: Present revised projections to board\n3. **Team Lead**: Schedule weekly syncs\n4. **Marketing**: Launch campaign by Nov 1\n5. **Ops**: Audit current processes\n6. **HR**: Complete hiring for Q4\n7. **Finance**: Budget reallocation proposal' },
+              ],
+            },
+            {
+              id: 'chat-3',
+              title: 'Speaker identification',
+              preview: 'Who spoke the most in these meetings...',
+              messageCount: 3,
+              createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2),
+              messages: [],
+            },
+          ],
+          artifacts: [
+            {
+              id: 'art-1',
+              type: 'clip',
+              name: 'Revenue Discussion - Q4 Targets',
+              source: 'Q4_Planning_Session_2.mp4',
+              timestamp: '12:34 - 15:22',
+              duration: '2:48',
+              thumbnail: null,
+              createdAt: new Date(Date.now() - 1000 * 60 * 60),
+              size: '24.5 MB',
+            },
+            {
+              id: 'art-2',
+              type: 'screenshot',
+              name: 'Quarterly Projections Slide',
+              source: 'Q4_Planning_Session_2.mp4',
+              timestamp: '14:02',
+              thumbnail: null,
+              createdAt: new Date(Date.now() - 1000 * 60 * 90),
+              size: '1.2 MB',
+            },
+            {
+              id: 'art-3',
+              type: 'report',
+              name: 'Meeting Summary - Oct 5',
+              format: 'PDF',
+              pages: 4,
+              createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24),
+              size: '892 KB',
+            },
+            {
+              id: 'art-4',
+              type: 'clip',
+              name: 'Team Introductions',
+              source: 'Q4_Kickoff.mp4',
+              timestamp: '00:00 - 05:30',
+              duration: '5:30',
+              thumbnail: null,
+              createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2),
+              size: '48.2 MB',
+            },
+          ],
+        },
+        {
+          id: '2',
+          name: 'Training Videos',
+          videoCount: 8,
+          indexed: 5,
+          duration: '1h 45m',
+          preset: 'document-reporter',
+          updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 24),
+          chatHistory: [
+            {
+              id: 'chat-4',
+              title: 'Safety protocol search',
+              preview: 'Show me all safety protocols mentioned...',
+              messageCount: 4,
+              createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48),
+              messages: [],
+            },
+          ],
+          artifacts: [
+            {
+              id: 'art-5',
+              type: 'report',
+              name: 'Training Compliance Report',
+              format: 'PDF',
+              pages: 12,
+              createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48),
+              size: '2.4 MB',
+            },
+          ],
+        },
+        {
+          id: '3',
+          name: 'Customer Feedback Sessions',
+          videoCount: 24,
+          indexed: 24,
+          duration: '4h 30m',
+          preset: 'quick-search',
+          updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3),
+          chatHistory: [],
+          artifacts: [],
+        },
+        {
+          id: '4',
+          name: 'Product Demo Collection',
+          videoCount: 6,
+          indexed: 0,
+          duration: '45m',
+          preset: 'custom',
+          updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7),
+          chatHistory: [],
+          artifacts: [],
+        },
+      ]);
+      const [currentProject, setCurrentProject] = useState(null);
+
+      const handleCreateProject = (projectData) => {
+        // Handle both simple name string and full wizard data
+        const name = typeof projectData === 'string' ? projectData : projectData.name;
+        const files = typeof projectData === 'object' ? projectData.files : [];
+        const preset = typeof projectData === 'object' ? projectData.selectedPreset : 'video-analyst';
+        const tools = typeof projectData === 'object' ? projectData.enabledTools : [];
+        const description = typeof projectData === 'object' ? projectData.description : '';
+        const tags = typeof projectData === 'object' ? projectData.tags : [];
+
+        const newProject = {
+          id: Date.now().toString(),
+          name,
+          description,
+          tags,
+          videoCount: files.length,
+          indexed: 0,
+          duration: null,
+          updatedAt: new Date(),
+          preset,
+          tools,
+          chatHistory: [],
+          artifacts: [],
+        };
+        setProjects([newProject, ...projects]);
+      };
+
+      const handleDeleteProject = (id) => {
+        setProjects(projects.filter(p => p.id !== id));
+      };
+
+      return (
+        <ThemeProvider>
+          <AppContent
+            projects={projects}
+            currentProject={currentProject}
+            setCurrentProject={setCurrentProject}
+            handleCreateProject={handleCreateProject}
+            handleDeleteProject={handleDeleteProject}
+          />
+        </ThemeProvider>
+      );
+    }
+
+    function AppContent({ projects, currentProject, setCurrentProject, handleCreateProject, handleDeleteProject }) {
+      const { theme, toggleTheme } = useTheme();
+
+      return (
+        <ToastProvider>
+          <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', transition: 'background 0.2s' }}>
+            {/* Top Bar */}
+            <div style={{
+              padding: '12px 24px',
+              borderBottom: '1px solid var(--border-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'var(--bg-secondary)',
+              transition: 'background 0.2s, border-color 0.2s',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 28,
+                  height: 28,
+                  background: 'var(--accent-primary)',
+                  borderRadius: 6,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: 14,
+                  color: theme === 'dark' ? '#000' : '#fff',
+                }}>◆</div>
+                <span style={{ fontWeight: 600, fontSize: 16, color: 'var(--text-primary)' }}>Yama</span>
+                <span style={{
+                  padding: '2px 8px',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: 11,
+                  color: 'var(--text-muted)',
+                  fontWeight: 500,
+                }}>Content Analyst</span>
+              </div>
+
+              {/* Theme Toggle */}
+              <button
+                onClick={toggleTheme}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--bg-tertiary)',
+                  border: '1px solid var(--border-subtle)',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.15s',
+                }}
+                onMouseOver={e => {
+                  e.currentTarget.style.background = 'var(--bg-hover)';
+                  e.currentTarget.style.color = 'var(--text-primary)';
+                }}
+                onMouseOut={e => {
+                  e.currentTarget.style.background = 'var(--bg-tertiary)';
+                  e.currentTarget.style.color = 'var(--text-secondary)';
+                }}
+                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              >
+                {theme === 'dark' ? <Icons.Sun /> : <Icons.Moon />}
+              </button>
+            </div>
+
+            {/* Content */}
+            {currentProject ? (
+              <ProjectView
+                project={currentProject}
+                onBack={() => setCurrentProject(null)}
+                onImport={() => {}}
+              />
+            ) : (
+              <Dashboard
+                projects={projects}
+                onOpenProject={setCurrentProject}
+                onCreateProject={handleCreateProject}
+                onDeleteProject={handleDeleteProject}
+              />
+            )}
+          </div>
+        </ToastProvider>
+      );
+    }
+    // End of AppContent
+
+    // ============================================
+    // RENDER
+    // ============================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

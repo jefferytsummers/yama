@@ -48,6 +48,10 @@ pub mod colors {
     // Text colors
     pub const CHALK: Color32 = Color32::from_rgb(250, 250, 250);
     pub const SILVER: Color32 = Color32::from_rgb(161, 161, 170);
+    /// Tertiary text - WCAG AA compliant on dark backgrounds
+    pub const PEWTER: Color32 = Color32::from_rgb(142, 142, 153);
+    /// Decorative only - NOT WCAG AA compliant for readable text
+    /// Use for disabled states or decorative elements only
     pub const ASH: Color32 = Color32::from_rgb(113, 113, 122);
 
     // Semantic aliases
@@ -66,6 +70,8 @@ pub mod colors {
 
     pub const TEXT_PRIMARY: Color32 = CHALK;
     pub const TEXT_SECONDARY: Color32 = SILVER;
+    pub const TEXT_TERTIARY: Color32 = PEWTER;
+    /// Use only for decorative/non-essential text - fails WCAG AA
     pub const TEXT_MUTED: Color32 = ASH;
 
     /// Create a color with modified alpha
@@ -452,7 +458,13 @@ impl RichTextExt for egui::RichText {
 }
 
 // Re-export component types for convenience
-pub use components::{Badge, BadgeVariant, Card, ProgressBar, StatusIndicator};
+pub use components::{
+    // Existing components
+    Badge, BadgeVariant, Card, ProgressBar, StatusIndicator,
+    // Video analytics components
+    AlertTimeline, Detection, DetectionClass, DetectionOverlay, EventSeverity, GridLayout,
+    StreamStatus, TimelineAction, TimelineEvent, VideoGrid, VideoGridAction, VideoSourceInfo,
+};
 
 #[cfg(test)]
 mod tests {

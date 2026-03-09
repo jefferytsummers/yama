@@ -28,6 +28,9 @@ message Envelope {
     int32 priority = 8;
     // TTL in milliseconds (0 = no expiry)
     uint32 ttl_ms = 9;
+    // Protocol schema version for compatibility (e.g., "1.0.0")
+    // Used for protocol evolution and backward compatibility checks
+    string schema_version = 10;
 }
 
 // ServiceInfo describes a service in the system

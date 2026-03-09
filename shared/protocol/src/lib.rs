@@ -106,6 +106,7 @@ pub fn envelope(
         }),
         priority: 0,
         ttl_ms: 0,
+        schema_version: "1.0.0".to_string(),
     }
 }
 

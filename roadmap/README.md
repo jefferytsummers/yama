@@ -1,22 +1,23 @@
-# Yama Jetson AI Server Architecture Roadmap
+# Yama: Content Analyst Video Analysis Platform
 
 ## Executive Summary
 
-This roadmap defines the architecture and implementation plan for offloading AI operations from Mac/Web clients to a headless Jetson AI server. The Jetson runs continuous video analytics (DeepStream) and VLM inference (Triton), streaming results to thin clients for display and interaction.
+Yama is a batch video analysis platform designed for the **Content Analyst** persona: researchers, journalists, and analysts who work with video archives to extract insights, find patterns, and produce deliverables.
 
-**Target:** 4-8 concurrent 1080p/4K streams with real-time object detection + on-demand VLM queries.
+**Target:** Process 100GB-10TB video libraries with local-first, privacy-preserving analysis.
 
 ---
 
-## Deployment Modes
+## Primary Persona
 
-The architecture supports three deployment topologies through a unified abstraction layer:
+| Attribute | Value |
+|-----------|-------|
+| **Name** | Content Analyst |
+| **Role** | Researcher, journalist, analyst |
+| **Environment** | Mac (primary), Linux workstation |
+| **Mindset** | "I have too much footage and not enough time" |
 
-| Mode | Client | AI Server | Video Source | Use Case |
-|------|--------|-----------|--------------|----------|
-| **Mac Standalone** | Mac (egui) | Mac (local) | Mac decode | Development, single user |
-| **Mac + Jetson** | Mac (egui) | Jetson (remote) | Jetson decode | Production, distributed |
-| **Jetson Standalone** | Web / headless | Jetson (local) | Jetson decode | Edge deployment |
+See [personas/content-analyst.md](./personas/content-analyst.md) for full user stories.
 
 ---
 
@@ -24,235 +25,140 @@ The architecture supports three deployment topologies through a unified abstract
 
 | Component | Technology | Rationale |
 |-----------|------------|-----------|
-| Video Pipeline | DeepStream 7.x | Native multi-stream batching, NVDEC, NvInfer |
-| Detection | YOLOv8n TensorRT | Best speed/accuracy for real-time |
-| VLM (Primary) | Qwen2.5-VL-7B | General analysis, queries |
-| VLM (Fast) | VILA-2.7B | Real-time scene description |
-| Model Serving | Triton Inference Server | Multi-model, dynamic batching |
-| IPC | Protocol Buffers + WebSocket | Existing event bus, extended for remote |
-| Video Streaming | WebRTC + HLS fallback | Low latency + compatibility |
+| Platform | macOS (primary) | Target user environment |
+| Video Decode | GStreamer + VideoToolbox | Hardware acceleration |
+| Index Storage | SQLite + FTS5 + sqlite-vss | Fast local search with ANN |
+| Embeddings | CLIP (ViT-B/32) | Semantic video search |
+| Transcription | Whisper (whisper.cpp) | Speech-to-text |
+| VLM Inference | GGUF + MLX | Local Metal inference |
+| Clip Export | FFmpeg | Frame-accurate extraction |
+| UI Framework | egui | Native cross-platform |
 
 ---
 
-## Milestone Overview
-
-### Phase 1: Abstraction Layer Foundation (11 days)
-Establish platform-agnostic traits enabling all deployment modes.
-
-| Milestone | Description | Days |
-|-----------|-------------|------|
-| 1.1 | Core Trait Definitions | 3 |
-| 1.2 | Request/Response Types | 2 |
-| 1.3 | Apple Local Implementations | 4 |
-| 1.4 | Deployment Configuration | 2 |
-
-### Phase 2: Remote Event Bus & Authentication (10 days)
-Enable authenticated remote connections between clients and Jetson.
-
-| Milestone | Description | Days |
-|-----------|-------------|------|
-| 2.1 | Event Bus Authentication | 3 |
-| 2.2 | Remote Session Protocol | 3 |
-| 2.3 | Remote Provider Implementations | 4 |
-
-### Phase 3: DeepStream Video Pipeline (10 days)
-Multi-stream video analytics with hardware-accelerated detection.
-
-| Milestone | Description | Days |
-|-----------|-------------|------|
-| 3.1 | DeepStream Pipeline Setup | 5 |
-| 3.2 | Metadata Extraction | 3 |
-| 3.3 | DeepStream Container | 2 |
-
-### Phase 4: Triton Model Serving (9 days)
-Multi-model inference server with dynamic loading.
-
-| Milestone | Description | Days |
-|-----------|-------------|------|
-| 4.1 | Model Repository Setup | 3 |
-| 4.2 | Triton Rust Client | 4 |
-| 4.3 | Dynamic Model Loading | 2 |
-
-### Phase 5: Multi-Stage VLM Orchestration (26 days)
-Intelligent multi-pass video analysis with model routing.
-
-| Milestone | Description | Days |
-|-----------|-------------|------|
-| 5.1 | Video Characterization VLM | 4 |
-| 5.2 | Model Router | 5 |
-| 5.3 | Multi-Model Execution Engine | 4 |
-| 5.4 | Detection Router & Aggregation | 3 |
-| 5.5 | VLM Trigger System | 4 |
-| 5.6 | Context Store | 3 |
-| 5.7 | Query Handler | 3 |
-
-### Phase 6: Video Streaming (11 days)
-Low-latency video delivery to remote clients.
-
-| Milestone | Description | Days |
-|-----------|-------------|------|
-| 6.1 | WebRTC Server | 5 |
-| 6.2 | HLS Fallback | 3 |
-| 6.3 | Client Video Receiver | 3 |
-
-### Phase 7: Tool System & Agent Integration (8 days)
-Expose video analysis as agent tools.
-
-| Milestone | Description | Days |
-|-----------|-------------|------|
-| 7.1 | Tool Definitions | 2 |
-| 7.2 | Tool Handlers | 3 |
-| 7.3 | Agent Integration | 3 |
-
-### Phase 8: End-to-End Integration (7 days)
-All components working together.
-
-| Milestone | Description | Days |
-|-----------|-------------|------|
-| 8.1 | Mac Standalone E2E | 2 |
-| 8.2 | Mac + Jetson E2E | 3 |
-| 8.3 | Jetson Standalone E2E | 2 |
-
----
-
-## Total Effort
-
-| Metric | Value |
-|--------|-------|
-| Phases | 8 |
-| Milestones | 29 |
-| Tasks | 122 |
-| Estimated Duration | 92 days (~19 weeks) |
-
----
-
-## Critical Path
+## Roadmap Structure
 
 ```
-Phase 1 (Abstraction) ──▶ Phase 2 (Remote Bus) ──▶ Phase 8 (E2E)
-         │                      │
-         ▼                      ▼
-    Phase 3 (DeepStream) ──▶ Phase 5 (Orchestration)
-         │                      │
-         ▼                      ▼
-    Phase 4 (Triton) ───────────┘
-                                │
-                                ▼
-                          Phase 6 (Streaming)
-                                │
-                                ▼
-                          Phase 7 (Tools)
+P0 UX Discovery (5-7d) ──┬── P0.5 GStreamer Spike (2d, parallel)
+                         ↓
+P1 Foundation (8d) → P2 Indexing + Vector (12d) → P3 Transcription (6d)
+                                                        ↓
+                   P4 Inference + Model Mgmt (9d) ──────┘
+                         ↓
+P5 Search + sqlite-vss (10d) → P6 Extraction (6d) → P7 Tools (8d) → P8 Export (5d)
 ```
+
+---
+
+## Phase Overview
+
+| Phase | Name | Days | Focus |
+|-------|------|------|-------|
+| 0 | UX Discovery | 5-7 | Workflow mapping, wireframes, component inventory |
+| 0.5 | GStreamer Spike | 2 | Validate CPU-buffer decode performance (parallel) |
+| 1 | Foundation | 8 | Core traits, batch processing, indexing providers |
+| 2 | Video Indexing | 12 | SQLite schema, CLIP embeddings, sqlite-vss vector index |
+| 3 | Transcription | 6 | Whisper integration, FTS5 search |
+| 4 | Inference | 9 | Local GGUF/MLX models, Metal acceleration, model management |
+| 5 | Search & Retrieval | 10 | Semantic (ANN) + full-text search, query parsing |
+| 6 | Clip Extraction | 6 | FFmpeg export, batch operations |
+| 7 | Tool System | 8 | Content Analyst agent tools |
+| 8 | Export & Reporting | 5 | Markdown, CSV, JSON reports |
+| **Total** | | **66-70 days** | |
+
+---
+
+## Workflow
+
+```
+1. IMPORT
+   └─ Drag folder of videos into Yama
+
+2. INDEX (background)
+   ├─ Transcription (Whisper)
+   ├─ Key frame extraction
+   ├─ CLIP embedding generation
+   └─ SQLite metadata storage
+
+3. QUERY
+   └─ "Find all mentions of 'Q4 projections' with visible charts"
+
+4. REVIEW
+   ├─ Thumbnails + timestamps
+   ├─ Confidence scores
+   └─ Star/flag relevant results
+
+5. EXTRACT
+   └─ Export matching clips with padding
+
+6. REPORT
+   ├─ Generate summary markdown
+   └─ Export CSV/JSON for further analysis
+```
+
+---
+
+## Success Metrics
+
+| Metric | Target |
+|--------|--------|
+| Time to first result (50 videos) | < 5 minutes (initial index) |
+| Query response time (indexed) | < 3 seconds |
+| Clip extraction throughput | 10 clips/minute |
+| False positive rate | < 20% for natural language queries |
+
+---
+
+## Memory Budget (Mac 16GB)
+
+| Component | Allocation | Notes |
+|-----------|------------|-------|
+| Whisper (tiny.en) | 200MB | Fast transcription |
+| Whisper (base.en) | 400MB | Better accuracy |
+| CLIP (ViT-B/32) | 350MB | Semantic embeddings |
+| VLM (7B Q4) | 4GB | Analysis queries |
+| SQLite + index | 500MB | Metadata cache |
+| Video decode | 500MB | GStreamer buffers |
+| System reserve | 4GB | macOS, other apps |
+| **Available headroom** | ~5GB | |
+
+---
+
+## Non-Goals (MVP)
+
+Explicitly out of scope:
+- Real-time monitoring / live streams
+- Multi-user collaboration
+- Cloud storage integration
+- Mobile access
+- Alert systems
 
 ---
 
 ## Phase Documents
 
-- [Phase 1: Abstraction Layer Foundation](./phase-1-abstraction-layer.md)
-- [Phase 2: Remote Event Bus & Authentication](./phase-2-remote-event-bus.md)
-- [Phase 3: DeepStream Video Pipeline](./phase-3-deepstream-pipeline.md)
-- [Phase 4: Triton Model Serving](./phase-4-triton-serving.md)
-- [Phase 5: Multi-Stage VLM Orchestration](./phase-5-vlm-orchestration.md)
-- [Phase 6: Video Streaming](./phase-6-video-streaming.md)
-- [Phase 7: Tool System & Agent Integration](./phase-7-tool-system.md)
-- [Phase 8: End-to-End Integration](./phase-8-integration.md)
-- [Summary & Checklist](./SUMMARY.md)
+- [Phase 0: UX Discovery](./phase-0-ux-discovery.md) *(includes GStreamer Spike)*
+- [Phase 1: Foundation](./phase-1-foundation.md)
+- [Phase 2: Video Indexing](./phase-2-video-indexing.md) *(+sqlite-vss)*
+- [Phase 3: Transcription](./phase-3-transcription.md)
+- [Phase 4: Inference](./phase-4-inference.md) *(+model management)*
+- [Phase 5: Search & Retrieval](./phase-5-search.md) *(+ANN search)*
+- [Phase 6: Clip Extraction](./phase-6-clip-extraction.md)
+- [Phase 7: Tool System](./phase-7-tools.md)
+- [Phase 8: Export & Reporting](./phase-8-export.md)
 
 ---
 
-## Architecture Diagram
+## Supporting Documents
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    JETSON AI SERVER (Headless)                          │
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  Video Ingestion (DeepStream 7.x)                               │   │
-│  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐                   │   │
-│  │  │RTSP #1 │ │RTSP #2 │ │RTSP #3 │ │... #8  │  (NVDEC decode)   │   │
-│  │  └───┬────┘ └───┬────┘ └───┬────┘ └───┬────┘                   │   │
-│  │      └──────────┴──────────┴──────────┘                         │   │
-│  │                      │                                          │   │
-│  │                      ▼                                          │   │
-│  │  ┌──────────────────────────────────────────────────────────┐  │   │
-│  │  │  NvInfer (YOLOv8) + NvDCF Tracker (batched inference)    │  │   │
-│  │  └──────────────────────────────────────────────────────────┘  │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                      │                                                  │
-│                      ▼                                                  │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  AI Orchestrator (Rust)                                         │   │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │   │
-│  │  │ Detection    │  │ VLM Trigger  │  │ Query        │          │   │
-│  │  │ Router       │  │ (event-based)│  │ Handler      │          │   │
-│  │  └──────────────┘  └──────────────┘  └──────────────┘          │   │
-│  │                           │                                     │   │
-│  │                           ▼                                     │   │
-│  │  ┌──────────────────────────────────────────────────────────┐  │   │
-│  │  │  Triton Inference Server                                  │  │   │
-│  │  │  ├── YOLOv8n.engine (TensorRT)                           │  │   │
-│  │  │  ├── Qwen2.5-VL-7B (TensorRT-LLM / mistral.rs)          │  │   │
-│  │  │  └── CLIP embeddings (optional)                          │  │   │
-│  │  └──────────────────────────────────────────────────────────┘  │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                      │                                                  │
-│                      ▼                                                  │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  Remote Event Bus (extended)                                    │   │
-│  │  ws://jetson:8765 (authenticated, remote-capable)               │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────┘
-                           │
-                           │ WebSocket + WebRTC
-                           │
-        ┌──────────────────┼──────────────────┐
-        ▼                  ▼                  ▼
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│   Mac Client    │ │   Web Client    │ │   Mobile        │
-│   (egui)        │ │   (SvelteKit)   │ │   (Future)      │
-└─────────────────┘ └─────────────────┘ └─────────────────┘
-```
+- [Model Strategy](./model-strategy.md) - Model selection for Whisper, CLIP, VLM
+- [Summary & Checklist](./SUMMARY.md) - Implementation tracking
+- [Content Analyst Persona](./personas/content-analyst.md) - User stories
 
 ---
 
-## File Structure Overview
+## Archived Roadmap
 
-```
-yama/
-├── shared/
-│   ├── platform-traits/src/
-│   │   ├── ai_server.rs          # AIServerProvider trait
-│   │   ├── video.rs              # VideoProvider trait
-│   │   ├── detection.rs          # DetectionProvider trait
-│   │   ├── context.rs            # ContextStore trait
-│   │   ├── streaming.rs          # StreamProvider trait
-│   │   └── tools.rs              # ToolProvider trait
-│   │
-│   ├── ai-client/                # Unified client for all modes
-│   │   └── src/
-│   │       ├── local.rs          # Local implementations
-│   │       ├── remote.rs         # Remote implementations
-│   │       └── config.rs         # Deployment configuration
-│   │
-│   └── protocol/proto/
-│       ├── vlm.proto             # Extended VLM messages
-│       ├── remote.proto          # Remote session protocol
-│       └── detection.proto       # Multi-stream detections
-│
-├── platform/
-│   ├── apple/host/src/providers/ # Apple-specific providers
-│   │
-│   └── jetson/
-│       ├── ai-server/            # Headless AI server
-│       │   └── src/
-│       │       ├── deepstream/   # DeepStream integration
-│       │       ├── triton/       # Triton client
-│       │       ├── orchestrator/ # AI orchestration
-│       │       └── streaming/    # Video output
-│       │
-│       └── deepstream-config/    # DeepStream configs
-│
-└── containers/
-    ├── triton/                   # Triton model repository
-    └── deepstream/               # DeepStream app
-```
+The previous security monitoring roadmap (Jetson + real-time streams) has been archived:
+
+- [Archive: Security Monitoring](./archive/security-monitoring/)

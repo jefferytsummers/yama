@@ -20,6 +20,24 @@
   },
 
   "colors": {
+    "_accessibility": {
+      "wcagAA": {
+        "normalText": 4.5,
+        "largeText": 3.0,
+        "uiComponents": 3.0
+      },
+      "contrastRatios": {
+        "chalk-on-slate": 12.8,
+        "silver-on-slate": 5.2,
+        "ash-on-slate": 2.4,
+        "pewter-on-slate": 4.6
+      },
+      "notes": [
+        "Ash (#71717A) on Slate fails WCAG AA (2.4:1, needs 4.5:1)",
+        "Use Silver (#A1A1AA) or Pewter (#8E8E99) for secondary text",
+        "Ash should only be used for decorative/non-essential elements"
+      ]
+    },
     "core": {
       "obsidian": {
         "value": "#0D0D0F",
@@ -105,16 +123,27 @@
       "silver": {
         "value": "#A1A1AA",
         "rgb": [161, 161, 170],
-        "description": "Secondary text",
+        "description": "Secondary text (WCAG AA compliant)",
         "css": "--color-silver",
-        "rust": "SILVER"
+        "rust": "SILVER",
+        "contrastOnSlate": 5.2
+      },
+      "pewter": {
+        "value": "#8E8E99",
+        "rgb": [142, 142, 153],
+        "description": "Tertiary text (WCAG AA compliant)",
+        "css": "--color-pewter",
+        "rust": "PEWTER",
+        "contrastOnSlate": 4.6
       },
       "ash": {
         "value": "#71717A",
         "rgb": [113, 113, 122],
-        "description": "Muted/disabled text",
+        "description": "Decorative only - NOT for readable text (fails WCAG AA)",
         "css": "--color-ash",
-        "rust": "ASH"
+        "rust": "ASH",
+        "contrastOnSlate": 2.4,
+        "accessibilityWarning": "Do not use for text that must be readable"
       }
     }
   },
@@ -192,11 +221,169 @@
     },
     "status": {
       "running": { "color": "jade", "glow": true, "pulse": true },
-      "stopped": { "color": "ash", "glow": false, "pulse": false },
+      "stopped": { "color": "pewter", "glow": false, "pulse": false },
       "starting": { "color": "amber", "glow": false, "pulse": true },
       "stopping": { "color": "amber", "glow": false, "pulse": true },
       "error": { "color": "ember", "glow": true, "pulse": false },
       "inference": { "color": "violet", "glow": true, "pulse": true }
+    }
+  },
+
+  "uiStates": {
+    "_description": "Standard patterns for loading, empty, and error states",
+    "loading": {
+      "spinner": {
+        "color": "amber",
+        "size": { "sm": 16, "md": 24, "lg": 32 },
+        "strokeWidth": 2
+      },
+      "skeleton": {
+        "background": "graphite",
+        "highlight": "stone",
+        "animationDuration": "1.5s",
+        "borderRadius": "md"
+      },
+      "overlay": {
+        "background": "rgba(13, 13, 15, 0.7)",
+        "blur": "4px"
+      },
+      "text": {
+        "color": "silver",
+        "messages": {
+          "default": "Loading...",
+          "model": "Loading model...",
+          "inference": "Processing...",
+          "video": "Connecting to stream..."
+        }
+      }
+    },
+    "empty": {
+      "icon": {
+        "color": "pewter",
+        "size": 48
+      },
+      "title": {
+        "color": "silver",
+        "size": "h3"
+      },
+      "description": {
+        "color": "pewter",
+        "size": "body"
+      },
+      "action": {
+        "style": "secondary",
+        "text": "Get Started"
+      },
+      "messages": {
+        "noSources": {
+          "title": "No video sources",
+          "description": "Add a camera or video stream to get started"
+        },
+        "noDetections": {
+          "title": "No detections",
+          "description": "Detections will appear when objects are identified"
+        },
+        "noConversation": {
+          "title": "Start a conversation",
+          "description": "Ask questions about what you see in the video"
+        },
+        "noModels": {
+          "title": "No models loaded",
+          "description": "Load a model to enable AI features"
+        }
+      }
+    },
+    "error": {
+      "icon": {
+        "color": "ember",
+        "size": 48
+      },
+      "title": {
+        "color": "chalk",
+        "size": "h3"
+      },
+      "description": {
+        "color": "silver",
+        "size": "body"
+      },
+      "action": {
+        "primary": { "text": "Retry", "style": "primary" },
+        "secondary": { "text": "Dismiss", "style": "secondary" }
+      },
+      "inline": {
+        "background": "rgba(239, 68, 68, 0.1)",
+        "border": "1px solid ember",
+        "borderRadius": "md",
+        "padding": "3"
+      },
+      "toast": {
+        "background": "slate",
+        "border": "1px solid ember",
+        "duration": 5000
+      },
+      "messages": {
+        "connection": {
+          "title": "Connection failed",
+          "description": "Unable to connect to the server. Check your network."
+        },
+        "timeout": {
+          "title": "Request timed out",
+          "description": "The operation took too long. Please try again."
+        },
+        "notFound": {
+          "title": "Not found",
+          "description": "The requested resource could not be found."
+        },
+        "modelLoad": {
+          "title": "Model failed to load",
+          "description": "Check that the model file exists and is valid."
+        },
+        "inference": {
+          "title": "Inference error",
+          "description": "An error occurred during processing."
+        },
+        "videoSource": {
+          "title": "Video source error",
+          "description": "Unable to connect to the video stream."
+        }
+      }
+    },
+    "progress": {
+      "determinate": {
+        "track": "stone",
+        "fill": "amber",
+        "height": 4,
+        "borderRadius": "full"
+      },
+      "indeterminate": {
+        "track": "stone",
+        "fill": "amber",
+        "animation": "indeterminate 1.5s infinite ease-in-out"
+      },
+      "circular": {
+        "track": "stone",
+        "fill": "amber",
+        "strokeWidth": 3
+      },
+      "text": {
+        "color": "silver",
+        "size": "small"
+      }
+    },
+    "reconnecting": {
+      "indicator": {
+        "color": "amber",
+        "pulse": true
+      },
+      "text": {
+        "color": "silver",
+        "message": "Reconnecting..."
+      },
+      "retryDelay": {
+        "initial": 1000,
+        "max": 30000,
+        "multiplier": 2
+      }
     }
   }
 }

@@ -1,13 +1,16 @@
-//! Chat-centric UI for Yama video analysis.
+//! UI for Yama video analysis.
 //!
-//! This module provides a conversational interface for video inference,
-//! allowing users to drop videos into chat and provide prompts for analysis.
+//! This module provides two main interfaces:
+//! - **Chat mode**: Conversational VLM inference with video attachments
+//! - **Analyst mode**: Content Analyst workflow for batch video library management
 
+pub mod analyst;
 pub mod app;
 pub mod attachments;
 pub mod chat;
 
-pub use app::ChatApp;
+pub use app::{ChatApp, YamaApp};
+pub use analyst::{AnalystState, LibraryVideo, SearchResult};
 
 use std::path::PathBuf;
 

@@ -1,4 +1,4 @@
-//! Chat application - main eframe::App implementation.
+//! Application - main eframe::App implementation.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -8,32 +8,73 @@ use tracing::{error, info};
 use yama_theme::{colors, font_size, radius, spacing};
 
 use yama_host_apple::inference::{JobStatus, UploadInfo, VlmInferenceService};
+use crate::ui::analyst::{
+    AnalystState, Dashboard, DashboardAction, DashboardState,
+    IndexingProgress, IndexingStage,
+    LibraryAction, LibraryModal, LibraryModalAction, LibraryView,
+    Project, ProjectManager,
+    QueryAction, QueryPanel, QueryPanelState,
+    SearchAction, SearchBar, SearchResults,
+};
 use crate::ui::chat::{ChatInput, ChatInputAction, ConversationThread};
 use crate::ui::{
     AttachmentStatus, ChatMessageData, Conversation, FrameResult, InferenceProgress,
     VideoAttachmentData,
 };
 
-/// Shared application state accessible to the ChatApp.
+/// Application view mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ViewMode {
+    /// Chat-based VLM interaction
+    #[default]
+    Chat,
+    /// Content Analyst library view
+    Analyst,
+}
+
+/// Shared application state.
 pub struct AppState {
     /// VLM inference service
     pub inference_service: Option<Arc<VlmInferenceService>>,
 }
 
-/// Chat-centric application for video analysis.
-pub struct ChatApp {
+/// Main Yama application.
+pub struct YamaApp {
     /// Application state
     state: Arc<AppState>,
     /// Tokio runtime for async operations
     runtime: Arc<tokio::runtime::Runtime>,
-    /// Current conversation
+    /// Current view mode
+    view_mode: ViewMode,
+    /// Chat conversation state
     conversation: Conversation,
+    /// Project manager (for Analyst mode)
+    project_manager: ProjectManager,
+    /// Dashboard state
+    dashboard_state: DashboardState,
+    /// Query panel state (per-project, but shared UI state)
+    query_state: QueryPanelState,
     /// Selected model index
     selected_model_index: usize,
+    /// Width of the library panel (for resizable split)
+    library_panel_width: f32,
+    /// Whether library modal is open
+    library_modal_open: bool,
+    /// Library modal search filter
+    library_modal_filter: String,
+    /// Library modal selection
+    library_modal_selection: std::collections::HashSet<String>,
+    /// Current indexing progress (for active project)
+    indexing_progress: Option<IndexingProgress>,
+    /// Whether to show model settings panel
+    show_settings: bool,
 }
 
-impl ChatApp {
-    /// Create a new chat application.
+/// Legacy alias for backwards compatibility.
+pub type ChatApp = YamaApp;
+
+impl YamaApp {
+    /// Create a new Yama application.
     pub fn new(state: Arc<AppState>, runtime: Arc<tokio::runtime::Runtime>) -> Self {
         let mut conversation = Conversation::new();
 
@@ -45,8 +86,18 @@ impl ChatApp {
         Self {
             state,
             runtime,
+            view_mode: ViewMode::Analyst, // Start in Analyst mode for Phase 0 UX testing
             conversation,
+            project_manager: ProjectManager::new_with_mocks(),
+            dashboard_state: DashboardState::default(),
+            query_state: QueryPanelState::default(),
             selected_model_index: 0,
+            library_panel_width: 450.0,
+            library_modal_open: false,
+            library_modal_filter: String::new(),
+            library_modal_selection: std::collections::HashSet::new(),
+            indexing_progress: None,
+            show_settings: false,
         }
     }
 
@@ -223,33 +274,84 @@ impl ChatApp {
             }
         }
     }
+
+    /// Open file picker for analyst mode.
+    fn open_analyst_file_picker(&mut self) {
+        if let Some(paths) = rfd::FileDialog::new()
+            .add_filter("Video", &["mp4", "webm", "mov", "avi", "mkv", "m4v"])
+            .pick_files()
+        {
+            self.import_videos_to_current_project(paths);
+        }
+    }
+
+    /// Update indexing progress (mock simulation).
+    fn update_indexing_progress(&mut self) {
+        if let Some(progress) = &mut self.indexing_progress {
+            if progress.paused || progress.stage == IndexingStage::Complete {
+                return;
+            }
+
+            // Simulate progress
+            if progress.processed_videos < progress.total_videos {
+                progress.processed_videos += 1;
+                progress.eta_seconds = Some(
+                    ((progress.total_videos - progress.processed_videos) as u64) * 2,
+                );
+
+                // Get current file name from project
+                if let Some(project) = self.project_manager.current_project() {
+                    if let Some(video) = project.videos.get(progress.processed_videos as usize - 1) {
+                        progress.current_file = Some(video.filename.clone());
+                    }
+                }
+            }
+
+            // Advance stages
+            let stage_progress = progress.processed_videos as f32 / progress.total_videos as f32;
+            progress.stage = match stage_progress {
+                p if p < 0.25 => IndexingStage::Scanning,
+                p if p < 0.50 => IndexingStage::ExtractingKeyframes,
+                p if p < 0.75 => IndexingStage::GeneratingEmbeddings,
+                p if p < 1.0 => IndexingStage::Transcribing,
+                _ => IndexingStage::Complete,
+            };
+
+            if progress.stage == IndexingStage::Complete {
+                // Mark all videos as indexed in current project
+                if let Some(project) = self.project_manager.current_project_mut() {
+                    for video in &mut project.videos {
+                        video.indexed = true;
+                        video.has_transcript = true;
+                        video.keyframe_count = (video.duration_ms / 5000) as u32;
+                    }
+                }
+                self.indexing_progress = None;
+            }
+        }
+    }
 }
 
-impl eframe::App for ChatApp {
+impl eframe::App for YamaApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Poll for job updates if we have active inference
-        if self.conversation.has_active_inference() {
-            self.poll_jobs();
-            ctx.request_repaint();
-        }
-
-        // Check for dropped files globally
-        let dropped_files: Vec<PathBuf> = ctx.input(|i| {
-            i.raw
-                .dropped_files
-                .iter()
-                .filter_map(|f| f.path.clone())
-                .collect()
-        });
-
-        for path in dropped_files {
-            let attachment = VideoAttachmentData::new(path);
-            if attachment.is_video() {
-                self.conversation.add_draft_attachment(attachment);
+        // Poll for updates based on mode
+        match self.view_mode {
+            ViewMode::Chat => {
+                if self.conversation.has_active_inference() {
+                    self.poll_jobs();
+                    ctx.request_repaint();
+                }
+            }
+            ViewMode::Analyst => {
+                if self.indexing_progress.is_some() {
+                    // Request repaint for progress animation
+                    ctx.request_repaint_after(std::time::Duration::from_millis(500));
+                    self.update_indexing_progress();
+                }
             }
         }
 
-        // Top bar
+        // Top bar (shared between modes)
         egui::TopBottomPanel::top("top_bar")
             .frame(
                 egui::Frame::none()
@@ -267,56 +369,126 @@ impl eframe::App for ChatApp {
                             .strong()
                             .size(font_size::H2),
                     );
+
+                    // Mode indicator
+                    let mode_label = match self.view_mode {
+                        ViewMode::Chat => "Chat",
+                        ViewMode::Analyst => "Content Analyst",
+                    };
                     ui.label(
-                        egui::RichText::new("Video Analysis")
+                        egui::RichText::new(mode_label)
                             .color(colors::VIOLET)
                             .size(font_size::BODY),
                     );
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Status indicator
-                        if self.conversation.has_active_inference() {
-                            let pulse = yama_theme::animation::pulse_alpha(ctx);
-                            let pulse_color = colors::with_alpha(colors::VIOLET, (pulse * 255.0) as u8);
-                            ui.label(
-                                egui::RichText::new("● Analyzing...")
-                                    .color(pulse_color)
-                                    .strong(),
-                            );
+                        // Settings button
+                        if ui
+                            .add(
+                                egui::Button::new(egui::RichText::new("⚙").color(colors::SILVER))
+                                    .fill(colors::GRAPHITE)
+                                    .rounding(radius::SM),
+                            )
+                            .clicked()
+                        {
+                            self.show_settings = !self.show_settings;
                         }
 
-                        // Model selector
-                        if let Some(service) = &self.state.inference_service {
-                            let models: Vec<String> = service
-                                .list_models()
-                                .iter()
-                                .map(|m| m.name.clone())
-                                .collect();
+                        ui.add_space(spacing::S2);
 
-                            let selected_text = models
-                                .get(self.selected_model_index)
-                                .cloned()
-                                .unwrap_or_else(|| "Select model".to_string());
+                        // Mode toggle
+                        let toggle_label = match self.view_mode {
+                            ViewMode::Chat => "Library",
+                            ViewMode::Analyst => "Chat",
+                        };
+                        if ui
+                            .add(
+                                egui::Button::new(egui::RichText::new(toggle_label).color(colors::CHALK))
+                                    .fill(colors::GRAPHITE)
+                                    .rounding(radius::SM),
+                            )
+                            .clicked()
+                        {
+                            self.view_mode = match self.view_mode {
+                                ViewMode::Chat => ViewMode::Analyst,
+                                ViewMode::Analyst => ViewMode::Chat,
+                            };
+                        }
 
-                            ui.add_space(spacing::S4);
+                        // Mode-specific status
+                        match self.view_mode {
+                            ViewMode::Chat => {
+                                if self.conversation.has_active_inference() {
+                                    let pulse = yama_theme::animation::pulse_alpha(ctx);
+                                    let pulse_color = colors::with_alpha(colors::VIOLET, (pulse * 255.0) as u8);
+                                    ui.label(
+                                        egui::RichText::new("● Analyzing...")
+                                            .color(pulse_color)
+                                            .strong(),
+                                    );
+                                }
 
-                            egui::ComboBox::from_id_salt("model_selector")
-                                .selected_text(&selected_text)
-                                .show_ui(ui, |ui| {
-                                    for (i, model) in models.iter().enumerate() {
-                                        ui.selectable_value(
-                                            &mut self.selected_model_index,
-                                            i,
-                                            model,
+                                // Model selector
+                                if let Some(service) = &self.state.inference_service {
+                                    let models: Vec<String> = service
+                                        .list_models()
+                                        .iter()
+                                        .map(|m| m.name.clone())
+                                        .collect();
+
+                                    let selected_text = models
+                                        .get(self.selected_model_index)
+                                        .cloned()
+                                        .unwrap_or_else(|| "Select model".to_string());
+
+                                    ui.add_space(spacing::S4);
+
+                                    egui::ComboBox::from_id_salt("model_selector")
+                                        .selected_text(&selected_text)
+                                        .show_ui(ui, |ui| {
+                                            for (i, model) in models.iter().enumerate() {
+                                                ui.selectable_value(
+                                                    &mut self.selected_model_index,
+                                                    i,
+                                                    model,
+                                                );
+                                            }
+                                        });
+                                }
+                            }
+                            ViewMode::Analyst => {
+                                // Show current project name if in a project
+                                if let Some(project) = self.project_manager.current_project() {
+                                    ui.label(
+                                        egui::RichText::new(&project.name)
+                                            .color(colors::SILVER)
+                                            .size(font_size::BODY),
+                                    );
+                                }
+
+                                // Indexing status
+                                if let Some(progress) = &self.indexing_progress {
+                                    if progress.stage != IndexingStage::Complete {
+                                        ui.add_space(spacing::S2);
+                                        let pulse = yama_theme::animation::pulse_alpha(ctx);
+                                        let pulse_color = colors::with_alpha(colors::AMBER, (pulse * 255.0) as u8);
+                                        ui.label(
+                                            egui::RichText::new(format!(
+                                                "● Indexing {}/{}",
+                                                progress.processed_videos, progress.total_videos
+                                            ))
+                                            .color(pulse_color)
+                                            .strong(),
                                         );
                                     }
-                                });
+                                }
+                            }
                         }
                     });
                 });
             });
 
-        // Bottom status bar
+        // Bottom status bar (shared)
         egui::TopBottomPanel::bottom("status_bar")
             .frame(
                 egui::Frame::none()
@@ -338,8 +510,30 @@ impl eframe::App for ChatApp {
                     );
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Project stats in Analyst mode
+                        if self.view_mode == ViewMode::Analyst {
+                            if let Some(project) = self.project_manager.current_project() {
+                                let indexed = project.indexed_count();
+                                let total = project.video_count();
+                                ui.label(
+                                    egui::RichText::new(format!("{}/{} indexed", indexed, total))
+                                        .color(colors::SILVER)
+                                        .size(font_size::SMALL),
+                                );
+                            } else {
+                                let total_projects = self.project_manager.projects.len();
+                                ui.label(
+                                    egui::RichText::new(format!("{} projects", total_projects))
+                                        .color(colors::SILVER)
+                                        .size(font_size::SMALL),
+                                );
+                            }
+                        }
+
                         // Backend indicator
                         if let Some(service) = &self.state.inference_service {
+                            ui.add_space(spacing::S4);
+
                             let (backend_text, backend_color) = match service.backend_name() {
                                 "mock" => ("Mock Backend", colors::AZURE),
                                 "event_bus" => ("VLM Container", colors::VIOLET),
@@ -380,6 +574,33 @@ impl eframe::App for ChatApp {
                 });
             });
 
+        // Mode-specific content
+        match self.view_mode {
+            ViewMode::Chat => self.show_chat_mode(ctx),
+            ViewMode::Analyst => self.show_analyst_mode(ctx),
+        }
+    }
+}
+
+impl YamaApp {
+    /// Show the chat mode UI.
+    fn show_chat_mode(&mut self, ctx: &egui::Context) {
+        // Check for dropped files
+        let dropped_files: Vec<PathBuf> = ctx.input(|i| {
+            i.raw
+                .dropped_files
+                .iter()
+                .filter_map(|f| f.path.clone())
+                .collect()
+        });
+
+        for path in dropped_files {
+            let attachment = VideoAttachmentData::new(path);
+            if attachment.is_video() {
+                self.conversation.add_draft_attachment(attachment);
+            }
+        }
+
         // Input panel at bottom
         egui::TopBottomPanel::bottom("input_panel")
             .resizable(false)
@@ -418,5 +639,301 @@ impl eframe::App for ChatApp {
             .show(ctx, |ui| {
                 ConversationThread::new(&self.conversation).show(ui);
             });
+    }
+
+    /// Show the Content Analyst mode UI.
+    fn show_analyst_mode(&mut self, ctx: &egui::Context) {
+        // Check if we're in a project or on the dashboard
+        if self.project_manager.is_dashboard() {
+            self.show_dashboard(ctx);
+        } else {
+            self.show_project_view(ctx);
+        }
+    }
+
+    /// Show the project dashboard.
+    fn show_dashboard(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::none()
+                    .fill(colors::OBSIDIAN)
+                    .inner_margin(egui::Margin::symmetric(spacing::S6, spacing::S4)),
+            )
+            .show(ctx, |ui| {
+                let action = Dashboard::new(&self.project_manager, &mut self.dashboard_state)
+                    .show(ctx, ui);
+
+                match action {
+                    DashboardAction::OpenProject(id) => {
+                        self.project_manager.open_project(&id);
+                        // Reset query state for new project
+                        self.query_state = QueryPanelState::default();
+                    }
+                    DashboardAction::CreateProject => {
+                        self.dashboard_state.new_project_dialog = true;
+                    }
+                    DashboardAction::CreateProjectNamed(name) => {
+                        let id = self.project_manager.create_project(&name);
+                        self.project_manager.open_project(&id);
+                        self.query_state = QueryPanelState::default();
+                    }
+                    DashboardAction::DeleteProject(id) => {
+                        self.project_manager.delete_project(&id);
+                    }
+                    DashboardAction::ImportToNewProject(paths) => {
+                        // Create new project from dropped files
+                        let name = if paths.len() == 1 {
+                            paths[0]
+                                .file_stem()
+                                .map(|s| s.to_string_lossy().to_string())
+                                .unwrap_or_else(|| "New Project".to_string())
+                        } else {
+                            format!("Import ({} videos)", paths.len())
+                        };
+                        let id = self.project_manager.create_project(&name);
+                        self.project_manager.open_project(&id);
+                        self.import_videos_to_current_project(paths);
+                        self.query_state = QueryPanelState::default();
+                    }
+                    DashboardAction::None => {}
+                }
+            });
+    }
+
+    /// Show a project view (query panel + library modal).
+    fn show_project_view(&mut self, ctx: &egui::Context) {
+        // Check for dropped files
+        let dropped_files: Vec<PathBuf> = ctx.input(|i| {
+            i.raw
+                .dropped_files
+                .iter()
+                .filter_map(|f| f.path.clone())
+                .collect()
+        });
+
+        if !dropped_files.is_empty() {
+            self.import_videos_to_current_project(dropped_files);
+        }
+
+        // Show library modal if open
+        if self.library_modal_open {
+            self.show_library_modal(ctx);
+        }
+
+        // Main project view
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::none()
+                    .fill(colors::BASALT)
+                    .inner_margin(egui::Margin::symmetric(spacing::S6, spacing::S4)),
+            )
+            .show(ctx, |ui| {
+                // Top action bar
+                ui.horizontal(|ui| {
+                    // Back to dashboard
+                    if ui
+                        .add(
+                            egui::Button::new(egui::RichText::new("← Projects").color(colors::CHALK))
+                                .fill(colors::GRAPHITE)
+                                .rounding(radius::MD),
+                        )
+                        .clicked()
+                    {
+                        self.project_manager.close_project();
+                        return;
+                    }
+
+                    ui.add_space(spacing::S3);
+
+                    // Project name
+                    if let Some(project) = self.project_manager.current_project() {
+                        ui.heading(
+                            egui::RichText::new(&project.name)
+                                .color(colors::CHALK)
+                                .size(font_size::H3),
+                        );
+                    }
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Import button (opens modal)
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    egui::RichText::new("📁 Import").color(colors::OBSIDIAN),
+                                )
+                                .fill(colors::AMBER)
+                                .rounding(radius::MD),
+                            )
+                            .on_hover_text("Import videos into this project")
+                            .clicked()
+                        {
+                            self.library_modal_open = true;
+                        }
+
+                        ui.add_space(spacing::S2);
+
+                        // Quick stats
+                        if let Some(project) = self.project_manager.current_project() {
+                            let total = project.video_count();
+                            let indexed = project.indexed_count();
+
+                            if total > 0 {
+                                ui.label(
+                                    egui::RichText::new(format!("{} indexed", indexed))
+                                        .color(colors::JADE)
+                                        .size(font_size::BODY),
+                                );
+
+                                ui.label(egui::RichText::new("•").color(colors::STONE));
+
+                                ui.label(
+                                    egui::RichText::new(format!("{} videos", total))
+                                        .color(colors::SILVER)
+                                        .size(font_size::BODY),
+                                );
+                            }
+                        }
+
+                        // Indexing progress indicator
+                        if let Some(progress) = &self.indexing_progress {
+                            if progress.stage != IndexingStage::Complete {
+                                ui.add_space(spacing::S3);
+
+                                let pulse = yama_theme::animation::pulse_alpha(ctx);
+                                let progress_color = colors::with_alpha(colors::AMBER, (pulse * 255.0) as u8);
+
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "● {} {}/{}",
+                                        progress.stage.label(),
+                                        progress.processed_videos,
+                                        progress.total_videos
+                                    ))
+                                    .color(progress_color)
+                                    .size(font_size::SMALL),
+                                );
+                            }
+                        }
+                    });
+                });
+
+                ui.add_space(spacing::S3);
+                ui.separator();
+                ui.add_space(spacing::S3);
+
+                // Query panel (full width) - use project's video count for context
+                if let Some(project) = self.project_manager.current_project() {
+                    // Create a temporary AnalystState from the project for the query panel
+                    let mut temp_state = AnalystState::new();
+                    temp_state.videos = project.videos.clone();
+
+                    let action = QueryPanel::new(&mut self.query_state, &temp_state).show(ui);
+                    self.handle_query_action(action);
+                }
+            });
+    }
+
+    /// Show the library modal for the current project.
+    fn show_library_modal(&mut self, ctx: &egui::Context) {
+        // We need to work with the current project's videos
+        if let Some(project) = self.project_manager.current_project_mut() {
+            // Create a temporary AnalystState from the project
+            let mut temp_state = AnalystState::new();
+            temp_state.videos = std::mem::take(&mut project.videos);
+
+            let action = LibraryModal::new(
+                &mut temp_state,
+                &mut self.library_modal_filter,
+                &mut self.library_modal_selection,
+            )
+            .show(ctx);
+
+            // Put videos back
+            if let Some(project) = self.project_manager.current_project_mut() {
+                project.videos = temp_state.videos;
+            }
+
+            match action {
+                LibraryModalAction::Close => {
+                    self.library_modal_open = false;
+                }
+                LibraryModalAction::BrowseFiles => {
+                    self.open_analyst_file_picker();
+                }
+                LibraryModalAction::SelectVideo(id) => {
+                    if let Some(project) = self.project_manager.current_project() {
+                        if let Some(video) = project.get_video(&id) {
+                            self.query_state.add_video_reference(&video.filename);
+                        }
+                    }
+                    self.library_modal_open = false;
+                    self.library_modal_selection.clear();
+                }
+                LibraryModalAction::SelectVideos(ids) => {
+                    if let Some(project) = self.project_manager.current_project() {
+                        for id in &ids {
+                            if let Some(video) = project.get_video(id) {
+                                self.query_state.add_video_reference(&video.filename);
+                            }
+                        }
+                    }
+                    self.library_modal_open = false;
+                    self.library_modal_selection.clear();
+                }
+                LibraryModalAction::ImportFiles(paths) => {
+                    self.import_videos_to_current_project(paths);
+                }
+                LibraryModalAction::None => {}
+            }
+        }
+    }
+
+    /// Import videos into the current project.
+    fn import_videos_to_current_project(&mut self, paths: Vec<PathBuf>) {
+        if let Some(project) = self.project_manager.current_project_mut() {
+            let video_count = paths.len() as u32;
+            project.import_videos(paths);
+
+            // Start mock indexing
+            if video_count > 0 {
+                self.indexing_progress = Some(IndexingProgress::new(video_count));
+            }
+        }
+    }
+
+    /// Handle query panel actions.
+    fn handle_query_action(&mut self, action: QueryAction) {
+        match action {
+            QueryAction::SubmitQuery(query) => {
+                info!("Query submitted: {}", query);
+
+                // Clear input
+                self.query_state.query_input.clear();
+
+                // Add exchange
+                self.query_state.add_exchange(query.clone());
+
+                // Mock: simulate search results
+                // In a real implementation, this would search the project's indexed videos
+                self.query_state.mock_complete_query(Vec::new());
+            }
+            QueryAction::PreviewResult { video_id, timestamp_ms } => {
+                info!("Preview: {} @ {}ms", video_id, timestamp_ms);
+                // TODO: Open video preview
+            }
+            QueryAction::ExtractClip { video_id, start_ms, end_ms } => {
+                info!("Extract clip: {} from {}ms to {}ms", video_id, start_ms, end_ms);
+                // TODO: Actually extract clip
+            }
+            QueryAction::AnalyzeFrame { video_id, timestamp_ms } => {
+                info!("Analyze frame: {} @ {}ms", video_id, timestamp_ms);
+                // TODO: Run VLM analysis on frame
+            }
+            QueryAction::GenerateSummary => {
+                info!("Generate summary");
+                // TODO: Generate summary from results
+            }
+            QueryAction::None => {}
+        }
     }
 }

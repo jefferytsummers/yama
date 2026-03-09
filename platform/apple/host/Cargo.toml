@@ -62,8 +62,11 @@ tower-http = { workspace = true }
 
 # File handling
 tempfile = { workspace = true }
-uuid = { version = "1.11", features = ["v4"] }
+uuid = { workspace = true }
 rfd = "0.15"
+
+# Concurrency
+dashmap = { workspace = true }
 
 # CLI parsing (for headless binary)
 clap = { version = "4", features = ["derive"] }
