@@ -342,9 +342,11 @@ async fn handle_unix_connection(
     clients: ClientRegistry,
     broadcast_tx: broadcast::Sender<Envelope>,
 ) -> Result<()> {
-    let ws_stream = tokio_tungstenite::client_async("ws://localhost/", stream)
-        .await?
-        .0;
+    // Use accept_async to accept the incoming WebSocket connection
+    // (client sends HTTP upgrade request, server responds)
+    let ws_stream = tokio_tungstenite::accept_async(stream)
+        .await
+        .context("Unix socket WebSocket handshake failed")?;
 
     let (mut ws_tx, mut ws_rx) = ws_stream.split();
     let (client_tx, mut client_rx) = mpsc::channel::<Envelope>(100);

@@ -68,7 +68,9 @@ pub struct ModelConfig {
 }
 
 fn default_model_id() -> String {
-    std::env::var("VLM_MODEL_ID").unwrap_or_else(|_| "Qwen/Qwen2.5-VL-7B-Instruct".to_string())
+    // Note: Qwen2.5-VL has image handling issues in current mistral.rs
+    // Using Qwen2-VL-2B which is documented and working
+    std::env::var("VLM_MODEL_ID").unwrap_or_else(|_| "Qwen/Qwen2-VL-2B-Instruct".to_string())
 }
 
 fn default_isq() -> String {

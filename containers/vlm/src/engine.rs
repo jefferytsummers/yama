@@ -134,12 +134,11 @@ impl VlmEngine {
 
         let model = self.model.lock().await;
 
-        // Build vision messages with image as a Vec
-        let images = vec![image];
+        // Build vision messages with the image
         let messages = VisionMessages::new().add_image_message(
             TextMessageRole::User,
             prompt.to_string(),
-            images,
+            vec![image],
             &*model,
         )?;
 

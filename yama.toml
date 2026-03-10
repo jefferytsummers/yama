@@ -87,7 +87,7 @@ enabled = ["video-analysis"]
 [inference]
 # VLM Inference backend configuration
 # Backend: "mock" (testing), "eventbus" (VLM container)
-backend = "mock"
+backend = "eventbus"
 # Directory for temporary video uploads
 upload_dir = "/tmp/yama-inference"
 # Maximum upload size in bytes (500MB)
