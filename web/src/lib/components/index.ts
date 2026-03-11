@@ -14,6 +14,7 @@ export { default as Icon } from './Icon.svelte';
 export { default as DropZone } from './DropZone.svelte';
 export { default as ChatBubble } from './ChatBubble.svelte';
 export { default as ToolCallCard } from './ToolCallCard.svelte';
+export { default as ConnectionStatus } from './ConnectionStatus.svelte';
 
 // Splash Page Components
 export { default as SplashHero } from './SplashHero.svelte';

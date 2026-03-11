@@ -1,20 +1,11 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { Button, Card, Badge, Progress, TextArea } from '$lib/components';
-	import { createVlmClient, type VlmApiClient } from '$lib/api/vlm';
-	import type { VlmMetrics, VlmInferenceResponse } from '$lib/types/vlm';
+	import { Button, Card, Badge, Progress, TextArea, ConnectionStatus } from '$lib/components';
+	import { vlmConnection, connectionStatus, vlmMetrics, modelReady } from '$lib/stores/vlmConnection';
+	import type { VlmInferenceResponse } from '$lib/types/vlm';
 
-	// Configuration
-	let serverUrl = $state('http://localhost:8000');
-	let vlmClient: VlmApiClient | null = $state(null);
-
-	// Health state
-	let health = $state<'unknown' | 'ready' | 'loading' | 'error'>('unknown');
-	let healthError = $state<string | null>(null);
-
-	// Metrics
-	let metrics = $state<VlmMetrics | null>(null);
-	let metricsInterval: ReturnType<typeof setInterval>;
+	// Server URL (bound to input)
+	let serverUrlInput = $state('http://localhost:8000');
 
 	// Image state
 	let selectedImage = $state<File | null>(null);
@@ -30,62 +21,21 @@
 	let error = $state<string | null>(null);
 
 	// Derived
-	let canInfer = $derived(health === 'ready' && imageBase64 !== null && prompt.trim().length > 0 && !isInferring);
+	let canInfer = $derived($modelReady && imageBase64 !== null && prompt.trim().length > 0 && !isInferring);
 
 	onMount(() => {
-		connectToServer();
+		// Auto-connect on mount
+		vlmConnection.connect(serverUrlInput);
 	});
 
 	onDestroy(() => {
-		clearInterval(metricsInterval);
+		vlmConnection.disconnect();
 	});
 
-	function connectToServer() {
-		vlmClient = createVlmClient(serverUrl);
-		checkHealth();
-		startMetricsPolling();
-	}
-
-	async function checkHealth() {
-		if (!vlmClient) return;
-
-		try {
-			const result = await vlmClient.checkHealth();
-			health = result.status;
-			healthError = null;
-		} catch (e) {
-			health = 'error';
-			healthError = e instanceof Error ? e.message : 'Unknown error';
-		}
-	}
-
-	function startMetricsPolling() {
-		// Clear existing interval
-		clearInterval(metricsInterval);
-
-		// Poll metrics every 2 seconds
-		metricsInterval = setInterval(async () => {
-			if (!vlmClient) return;
-			try {
-				metrics = await vlmClient.getMetrics();
-			} catch {
-				// Ignore metrics errors silently
-			}
-		}, 2000);
-
-		// Immediate fetch
-		if (vlmClient) {
-			vlmClient.getMetrics().then(m => metrics = m).catch(() => {});
-		}
-	}
-
 	function handleServerUrlChange() {
-		clearInterval(metricsInterval);
-		health = 'unknown';
-		metrics = null;
+		vlmConnection.setServerUrl(serverUrlInput);
 		response = null;
 		error = null;
-		connectToServer();
 	}
 
 	function handleImageSelect(e: Event) {
@@ -117,14 +67,15 @@
 	}
 
 	async function runInference() {
-		if (!vlmClient || !imageBase64 || !canInfer) return;
+		const client = vlmConnection.getClient();
+		if (!client || !imageBase64 || !canInfer) return;
 
 		isInferring = true;
 		error = null;
 		response = null;
 
 		try {
-			response = await vlmClient.infer({
+			response = await client.infer({
 				prompt,
 				image: imageBase64,
 				max_tokens: maxTokens,
@@ -151,10 +102,7 @@
 			<Badge variant="inference">LLaVA-1.5-7B</Badge>
 		</div>
 		<div class="header-right">
-			<div class="health-status" class:ready={health === 'ready'} class:error={health === 'error'} class:loading={health === 'loading'}>
-				<span class="health-dot"></span>
-				<span>{health === 'ready' ? 'Ready' : health === 'loading' ? 'Loading...' : health === 'error' ? 'Error' : 'Unknown'}</span>
-			</div>
+			<ConnectionStatus status={$connectionStatus} size="md" />
 		</div>
 	</header>
 
@@ -168,17 +116,26 @@
 					<input
 						id="server-url"
 						type="text"
-						bind:value={serverUrl}
+						bind:value={serverUrlInput}
 						class="text-input"
 						placeholder="http://localhost:8000"
 					/>
 				</div>
 				<Button variant="secondary" onclick={handleServerUrlChange}>
-					Connect
+					Reconnect
+				</Button>
+				<Button variant="ghost" onclick={() => vlmConnection.refresh()}>
+					Refresh
 				</Button>
 			</div>
-			{#if healthError}
-				<p class="error-text">{healthError}</p>
+			{#if $connectionStatus === 'disconnected'}
+				<p class="status-message error">Cannot reach VLM server. Retrying automatically...</p>
+			{:else if $connectionStatus === 'connecting'}
+				<p class="status-message connecting">Establishing connection...</p>
+			{:else if $connectionStatus === 'stale'}
+				<p class="status-message stale">Connection may be unstable. Checking...</p>
+			{:else if !$modelReady}
+				<p class="status-message loading">Server connected, model is loading...</p>
 			{/if}
 		</Card>
 
@@ -252,9 +209,16 @@
 						</div>
 					</div>
 
-					<Button variant="primary" disabled={!canInfer} loading={isInferring} onclick={runInference}>
-						{isInferring ? 'Analyzing...' : 'Run Inference'}
-					</Button>
+					<div class="action-row">
+						<Button variant="primary" disabled={!canInfer} loading={isInferring} onclick={runInference}>
+							{isInferring ? 'Analyzing...' : 'Run Inference'}
+						</Button>
+						{#if !$modelReady && $connectionStatus === 'connected'}
+							<span class="action-hint">Waiting for model to load...</span>
+						{:else if !imageBase64}
+							<span class="action-hint">Upload an image to continue</span>
+						{/if}
+					</div>
 				</Card>
 			</div>
 
@@ -295,40 +259,48 @@
 
 				<!-- Metrics -->
 				<Card>
-					<h2 class="section-title">Server Metrics</h2>
-					{#if metrics}
+					<div class="metrics-header">
+						<h2 class="section-title">Server Metrics</h2>
+						<ConnectionStatus status={$connectionStatus} size="sm" showLabel={false} />
+					</div>
+					{#if $vlmMetrics}
 						<div class="metrics-grid">
 							<div class="metric">
 								<span class="metric-label">GPU Memory</span>
-								<span class="metric-value">{metrics.gpu_memory_allocated_gb.toFixed(2)} GB</span>
-								<span class="metric-sub">/ {metrics.gpu_memory_total_gb.toFixed(0)} GB total</span>
+								<span class="metric-value">{$vlmMetrics.gpu_memory_allocated_gb.toFixed(2)} GB</span>
+								<span class="metric-sub">/ {$vlmMetrics.gpu_memory_total_gb.toFixed(0)} GB total</span>
 							</div>
 							<div class="metric">
 								<span class="metric-label">Model Load Time</span>
-								<span class="metric-value">{metrics.model_load_time_seconds.toFixed(2)}s</span>
+								<span class="metric-value">{$vlmMetrics.model_load_time_seconds.toFixed(2)}s</span>
 							</div>
 							<div class="metric">
 								<span class="metric-label">Total Requests</span>
-								<span class="metric-value">{metrics.inference_requests_total}</span>
+								<span class="metric-value">{$vlmMetrics.inference_requests_total}</span>
 								<span class="metric-sub">
-									{metrics.inference_success_total} ok / {metrics.inference_failed_total} failed
+									{$vlmMetrics.inference_success_total} ok / {$vlmMetrics.inference_failed_total} failed
 								</span>
 							</div>
 							<div class="metric">
 								<span class="metric-label">Avg Latency</span>
-								<span class="metric-value">{metrics.inference_latency_avg_ms.toFixed(0)} ms</span>
+								<span class="metric-value">{$vlmMetrics.inference_latency_avg_ms.toFixed(0)} ms</span>
 							</div>
 							<div class="metric">
 								<span class="metric-label">Avg Throughput</span>
-								<span class="metric-value">{metrics.tokens_per_second_avg.toFixed(1)} tok/s</span>
+								<span class="metric-value">{$vlmMetrics.tokens_per_second_avg.toFixed(1)} tok/s</span>
 							</div>
 							<div class="metric">
 								<span class="metric-label">Total Tokens</span>
-								<span class="metric-value">{metrics.tokens_generated_total}</span>
+								<span class="metric-value">{$vlmMetrics.tokens_generated_total}</span>
 							</div>
 						</div>
+					{:else if $connectionStatus === 'connected' || $connectionStatus === 'connecting'}
+						<div class="metrics-loading">
+							<Progress value={0} max={100} variant="default" indeterminate size="sm" />
+							<p class="placeholder-text">Loading metrics...</p>
+						</div>
 					{:else}
-						<p class="placeholder-text">Metrics loading...</p>
+						<p class="placeholder-text">Connect to server to view metrics</p>
 					{/if}
 				</Card>
 			</div>
@@ -370,52 +342,6 @@
 		font-weight: 600;
 		color: var(--color-chalk);
 		margin: 0;
-	}
-
-	.health-status {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		font-size: var(--text-small);
-		color: var(--color-ash);
-	}
-
-	.health-dot {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		background: var(--color-ash);
-	}
-
-	.health-status.ready .health-dot {
-		background: var(--color-jade);
-		box-shadow: 0 0 8px var(--color-jade);
-	}
-
-	.health-status.ready {
-		color: var(--color-jade);
-	}
-
-	.health-status.error .health-dot {
-		background: var(--color-ember);
-	}
-
-	.health-status.error {
-		color: var(--color-ember);
-	}
-
-	.health-status.loading .health-dot {
-		background: var(--color-amber);
-		animation: pulse 1.5s ease-in-out infinite;
-	}
-
-	.health-status.loading {
-		color: var(--color-amber);
-	}
-
-	@keyframes pulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.5; }
 	}
 
 	/* Main Content */
@@ -467,10 +393,31 @@
 		border-color: var(--color-amber);
 	}
 
-	.error-text {
-		color: var(--color-ember);
+	.status-message {
 		font-size: var(--text-small);
 		margin-top: var(--space-2);
+		padding: var(--space-2) var(--space-3);
+		border-radius: var(--radius-md);
+	}
+
+	.status-message.error {
+		color: var(--color-ember);
+		background: rgba(239, 68, 68, 0.1);
+	}
+
+	.status-message.connecting {
+		color: var(--color-jade);
+		background: rgba(16, 185, 129, 0.1);
+	}
+
+	.status-message.stale {
+		color: var(--color-amber);
+		background: rgba(245, 158, 11, 0.1);
+	}
+
+	.status-message.loading {
+		color: var(--color-violet);
+		background: rgba(139, 92, 246, 0.1);
 	}
 
 	/* Two Column Layout */
@@ -602,6 +549,18 @@
 		border-color: var(--color-amber);
 	}
 
+	.action-row {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+	}
+
+	.action-hint {
+		font-size: var(--text-small);
+		color: var(--color-ash);
+		font-style: italic;
+	}
+
 	/* Response */
 	.inference-loading {
 		display: flex;
@@ -659,6 +618,17 @@
 	}
 
 	/* Metrics */
+	.metrics-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: var(--space-3);
+	}
+
+	.metrics-header .section-title {
+		margin: 0;
+	}
+
 	.metrics-grid {
 		display: grid;
 		grid-template-columns: repeat(2, 1fr);
@@ -690,6 +660,13 @@
 		font-size: var(--text-tiny);
 		color: var(--color-silver);
 		margin-top: var(--space-1);
+	}
+
+	.metrics-loading {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		padding: var(--space-4);
 	}
 
 	/* Utilities */

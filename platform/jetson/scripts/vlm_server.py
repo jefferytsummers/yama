@@ -30,6 +30,19 @@ from PIL import Image
 
 app = Flask(__name__)
 
+
+# CORS support for web UI
+@app.after_request
+def add_cors_headers(response):
+    """Add CORS headers to all responses."""
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept"
+    return response
+
+
+
+
 # Configuration
 MODEL_PATH = os.environ.get("VLM_MODEL_PATH", "/data/models/llava/llava-1.5-7b-hf")
 DTYPE = torch.float16 if os.environ.get("VLM_DTYPE", "float16") == "float16" else torch.float32
@@ -104,23 +117,29 @@ def load_model():
     print(f"GPU Memory after load: {torch.cuda.memory_allocated()/1024**3:.2f} GB")
 
 
-@app.route("/v2/health/ready", methods=["GET"])
+@app.route("/v2/health/ready", methods=["GET", "OPTIONS"])
 def health_ready():
     """Health check endpoint."""
+    if request.method == "OPTIONS":
+        return "", 204
     if model is not None and processor is not None:
         return jsonify({"status": "ready"})
     return jsonify({"status": "loading"}), 503
 
 
-@app.route("/v2/health/live", methods=["GET"])
+@app.route("/v2/health/live", methods=["GET", "OPTIONS"])
 def health_live():
     """Liveness check endpoint."""
+    if request.method == "OPTIONS":
+        return "", 204
     return jsonify({"status": "live"})
 
 
-@app.route("/v2/models/llava/infer", methods=["POST"])
+@app.route("/v2/models/llava/infer", methods=["POST", "OPTIONS"])
 def infer():
     """Run inference on an image."""
+    if request.method == "OPTIONS":
+        return "", 204
     if model is None or processor is None:
         return jsonify({"error": "Model not loaded"}), 503
 
@@ -188,9 +207,11 @@ def infer():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/metrics", methods=["GET"])
+@app.route("/metrics", methods=["GET", "OPTIONS"])
 def get_metrics():
     """Prometheus-style metrics endpoint."""
+    if request.method == "OPTIONS":
+        return "", 204
     gpu_mem_allocated = torch.cuda.memory_allocated() if torch.cuda.is_available() else 0
     gpu_mem_reserved = torch.cuda.memory_reserved() if torch.cuda.is_available() else 0
     gpu_mem_total = torch.cuda.get_device_properties(0).total_memory if torch.cuda.is_available() else 0
