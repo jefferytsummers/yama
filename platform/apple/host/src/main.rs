@@ -15,28 +15,29 @@ use tracing_subscriber::FmtSubscriber;
 use yama_theme::YamaTheme;
 
 mod compositor;
-mod event_bus;
-mod http_server;
-mod orchestrator;
 mod ui;
 
-use event_bus::EventBus;
-use http_server::HttpServer;
-use orchestrator::Orchestrator;
 use ui::{app::AppState, ChatApp};
 
-// Use inference and db modules from the library crate
+// Use modules from the library crate
 use yama_host_apple::db::Database;
+use yama_host_apple::event_bus::{EventBus, EventBusConfig};
+use yama_host_apple::http_server::{HttpServer, HttpServerConfig};
 use yama_host_apple::inference::{VlmInferenceConfig, VlmInferenceService};
+use yama_host_apple::orchestrator::{Orchestrator, OrchestratorConfig};
+use yama_host_apple::ServiceState;
 
-/// Application configuration.
+/// Application configuration (extends library config with compositor).
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct Config {
-    pub compositor: compositor::CompositorConfig,
-    pub event_bus: event_bus::EventBusConfig,
-    pub orchestrator: orchestrator::OrchestratorConfig,
     #[serde(default)]
-    pub http_server: http_server::HttpServerConfig,
+    pub compositor: compositor::CompositorConfig,
+    #[serde(default)]
+    pub event_bus: EventBusConfig,
+    #[serde(default)]
+    pub orchestrator: OrchestratorConfig,
+    #[serde(default)]
+    pub http_server: HttpServerConfig,
     #[serde(default)]
     pub inference: VlmInferenceConfig,
 }
@@ -68,28 +69,31 @@ impl Config {
 
         Ok(Self::default())
     }
+
+    /// Convert to library config.
+    pub fn to_lib_config(&self) -> yama_host_apple::Config {
+        yama_host_apple::Config {
+            event_bus: self.event_bus.clone(),
+            orchestrator: self.orchestrator.clone(),
+            http_server: self.http_server.clone(),
+            inference: self.inference.clone(),
+        }
+    }
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             compositor: compositor::CompositorConfig::default(),
-            event_bus: event_bus::EventBusConfig::default(),
-            orchestrator: orchestrator::OrchestratorConfig::default(),
-            http_server: http_server::HttpServerConfig::default(),
+            event_bus: EventBusConfig::default(),
+            orchestrator: OrchestratorConfig::default(),
+            http_server: HttpServerConfig::default(),
             inference: VlmInferenceConfig::default(),
         }
     }
 }
 
-/// Shared state for background services (HTTP server, etc.).
-pub struct ServiceState {
-    pub config: Config,
-    pub database: Arc<Database>,
-    pub event_bus: Arc<EventBus>,
-    pub orchestrator: Arc<RwLock<Orchestrator>>,
-    pub inference_service: Option<Arc<VlmInferenceService>>,
-}
+// Use ServiceState from library
 
 fn main() -> Result<()> {
     // Initialize logging
@@ -165,9 +169,9 @@ fn main() -> Result<()> {
             }
         };
 
-        // Create service state for HTTP server
+        // Create service state for HTTP server (using library's ServiceState)
         let service_state = Arc::new(ServiceState {
-            config,
+            config: config.to_lib_config(),
             database,
             event_bus,
             orchestrator,

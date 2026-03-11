@@ -17,7 +17,8 @@
 pub mod chat_history;
 pub mod models;
 pub mod queries;
-pub mod vector_search;
+// TODO: Re-enable when embedding pipeline is implemented
+// pub mod vector_search;
 
 use std::path::{Path, PathBuf};
 
@@ -30,9 +31,10 @@ use tracing::{debug, info};
 pub use chat_history::{ChatHistory, ChatMessageRow, ChatSessionRow, MessageRole, StoredToolCall};
 pub use models::*;
 pub use queries::*;
-pub use vector_search::{
-    EmbeddingSource, SearchResult, StoredEmbedding, VectorIndex, VectorIndexConfig,
-};
+// TODO: Re-enable when embedding pipeline is implemented
+// pub use vector_search::{
+//     EmbeddingSource, SearchResult, StoredEmbedding, VectorIndex, VectorIndexConfig,
+// };
 
 /// Default database path under user's home directory.
 pub const DEFAULT_DB_PATH: &str = ".yama/yama.db";
