@@ -47,6 +47,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod allocator;
+pub mod batch_processor;
 pub mod decoder;
 pub mod display;
 pub mod error;
@@ -57,12 +58,17 @@ pub mod renderer;
 pub mod types;
 
 // Re-export main traits at crate root
-pub use allocator::{GpuAllocator, GpuBuffer, BufferUsage};
-pub use decoder::{VideoDecoder, DecodedFrame, DecoderCapabilities, CodecType};
-pub use display::{DisplayBackend, OutputInfo, OutputId, DisplayMode};
+pub use allocator::{BufferUsage, GpuAllocator, GpuBuffer};
+pub use batch_processor::{
+    BatchConfig, BatchProcessor, BatchProgress, BatchResult, BatchStage, BatchStatus,
+    EmbeddingConfig, ErrorStrategy, ImageFormat, KeyframeConfig, KeyframeStrategy,
+    ProgressCallback, TranscriptionConfig, VideoProcessingResult, WhisperModelSize,
+};
+pub use decoder::{CodecType, DecodedFrame, DecoderCapabilities, VideoDecoder};
+pub use display::{DisplayBackend, DisplayMode, OutputId, OutputInfo};
 pub use error::{PlatformError, PlatformResult};
+pub use factory::{detect_and_log_platform, FactoryConfig, PlatformFactory};
 pub use inference::{InferenceEngine, InferenceRequest, InferenceResponse, ModelInfo};
-pub use platform::{Platform, PlatformInfo, PlatformCapabilities, detect_platform};
-pub use renderer::{Renderer, RenderSurface, TextureHandle, TextureFormat};
-pub use factory::{PlatformFactory, FactoryConfig, detect_and_log_platform};
+pub use platform::{detect_platform, Platform, PlatformCapabilities, PlatformInfo};
+pub use renderer::{RenderSurface, Renderer, TextureFormat, TextureHandle};
 pub use types::*;

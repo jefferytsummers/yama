@@ -81,6 +81,10 @@ pub enum PlatformError {
     #[error("Operation timed out: {0}")]
     Timeout(String),
 
+    /// Operation was cancelled.
+    #[error("Operation cancelled")]
+    Cancelled,
+
     /// Device lost or disconnected.
     #[error("Device lost: {0}")]
     DeviceLost(String),
@@ -134,8 +138,14 @@ impl PlatformError {
     pub const fn is_recoverable(&self) -> bool {
         matches!(
             self,
-            Self::Timeout(_) | Self::DecodeError(_) | Self::BufferError(_)
+            Self::Timeout(_) | Self::DecodeError(_) | Self::BufferError(_) | Self::Cancelled
         )
+    }
+
+    /// Check if this error is a cancellation.
+    #[must_use]
+    pub const fn is_cancelled(&self) -> bool {
+        matches!(self, Self::Cancelled)
     }
 
     /// Check if this error indicates the device is lost.

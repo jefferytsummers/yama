@@ -60,6 +60,9 @@ axum = { workspace = true, features = ["multipart"] }
 tower = { workspace = true }
 tower-http = { workspace = true }
 
+# HTTP client (for model downloads)
+reqwest = { version = "0.12", features = ["stream"] }
+
 # File handling
 tempfile = { workspace = true }
 uuid = { workspace = true }
@@ -84,11 +87,30 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "chrono"] }
+chrono = { version = "0.4", features = ["serde"] }
+dirs-next = "2.0"
+
 # VLM inference (direct in-process) - optional, requires Xcode for Metal shaders
 mistralrs = { version = "0.7", default-features = false, features = ["metal"], optional = true }
 
 # Image processing (for VLM input conversion)
 image = { workspace = true }
+
+# ONNX Runtime for embeddings (CLIP, text embeddings)
+ort = { version = "2.0.0-rc.12", features = ["coreml", "ndarray"] }
+ndarray = "0.17"
+
+# Whisper transcription (with Metal acceleration)
+whisper-rs = "0.12"
+
+# Audio processing
+gstreamer-audio = "0.23"
+bytemuck = { version = "1.14", features = ["derive"] }
+
+# JSON Schema validation for tool input
+jsonschema = "0.18"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # macOS-specific dependencies

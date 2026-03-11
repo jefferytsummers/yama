@@ -228,6 +228,25 @@ impl VlmInferenceService {
         Self::with_backend(config, backend).await
     }
 
+    /// Create a mock VLM inference service for testing.
+    ///
+    /// This creates a synchronous mock that doesn't require async or file system access.
+    pub fn new_mock() -> Self {
+        Self {
+            config: VlmInferenceConfig::default(),
+            jobs: Arc::new(RwLock::new(HashMap::new())),
+            uploads: Arc::new(RwLock::new(HashMap::new())),
+            models: vec![VlmModelInfo {
+                id: "mock".to_string(),
+                name: "Mock Model".to_string(),
+                description: "Mock model for testing".to_string(),
+                max_frames: 100,
+                supports_streaming: false,
+            }],
+            backend: Arc::new(MockBackend::new()),
+        }
+    }
+
     /// Create a new VLM inference service with a specific backend.
     pub async fn with_backend(
         config: VlmInferenceConfig,

@@ -25,7 +25,8 @@ use http_server::HttpServer;
 use orchestrator::Orchestrator;
 use ui::{app::AppState, ChatApp};
 
-// Use inference module from the library crate
+// Use inference and db modules from the library crate
+use yama_host_apple::db::Database;
 use yama_host_apple::inference::{VlmInferenceConfig, VlmInferenceService};
 
 /// Application configuration.
@@ -84,6 +85,7 @@ impl Default for Config {
 /// Shared state for background services (HTTP server, etc.).
 pub struct ServiceState {
     pub config: Config,
+    pub database: Arc<Database>,
     pub event_bus: Arc<EventBus>,
     pub orchestrator: Arc<RwLock<Orchestrator>>,
     pub inference_service: Option<Arc<VlmInferenceService>>,
@@ -115,6 +117,14 @@ fn main() -> Result<()> {
 
     // Initialize services in the runtime
     let (service_state, app_state) = runtime.block_on(async {
+        // Initialize database
+        let database = Arc::new(
+            Database::open_default()
+                .await
+                .context("Failed to initialize database")?,
+        );
+        info!("Database initialized at {:?}", database.path);
+
         // Initialize event bus
         let event_bus = Arc::new(
             EventBus::new(config.event_bus.clone())
@@ -158,6 +168,7 @@ fn main() -> Result<()> {
         // Create service state for HTTP server
         let service_state = Arc::new(ServiceState {
             config,
+            database,
             event_bus,
             orchestrator,
             inference_service: inference_service.clone(),
