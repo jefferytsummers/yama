@@ -11,17 +11,23 @@
 	let selectedImage = $state<File | null>(null);
 	let imagePreview = $state<string | null>(null);
 	let imageBase64 = $state<string | null>(null);
+	let originalSize = $state<{ width: number; height: number } | null>(null);
+	let resizedSize = $state<{ width: number; height: number } | null>(null);
 
 	// Inference state
-	let prompt = $state('Describe this image in detail.');
-	let maxTokens = $state(256);
+	let prompt = $state('Describe this image briefly.');
+	let maxTokens = $state(100);  // Lower default for faster response
 	let temperature = $state(0.7);
+	let fastMode = $state(true);  // Default to fast mode
 	let isInferring = $state(false);
 	let response = $state<VlmInferenceResponse | null>(null);
 	let error = $state<string | null>(null);
 
 	// Derived
 	let canInfer = $derived($modelReady && imageBase64 !== null && prompt.trim().length > 0 && !isInferring);
+
+	// Constants
+	const MAX_IMAGE_SIZE = 512;  // Resize images larger than this
 
 	onMount(() => {
 		// Auto-connect on mount
@@ -38,7 +44,44 @@
 		error = null;
 	}
 
-	function handleImageSelect(e: Event) {
+	/**
+	 * Resize image client-side to reduce transfer time and server processing
+	 */
+	async function resizeImage(file: File, maxSize: number): Promise<{ base64: string; width: number; height: number }> {
+		return new Promise((resolve, reject) => {
+			const img = new Image();
+			img.onload = () => {
+				let { width, height } = img;
+
+				// Only resize if larger than maxSize
+				if (width > maxSize || height > maxSize) {
+					const ratio = Math.min(maxSize / width, maxSize / height);
+					width = Math.round(width * ratio);
+					height = Math.round(height * ratio);
+				}
+
+				// Draw to canvas
+				const canvas = document.createElement('canvas');
+				canvas.width = width;
+				canvas.height = height;
+				const ctx = canvas.getContext('2d');
+				if (!ctx) {
+					reject(new Error('Failed to get canvas context'));
+					return;
+				}
+				ctx.drawImage(img, 0, 0, width, height);
+
+				// Convert to JPEG for smaller size
+				const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+				const base64 = dataUrl.split(',')[1];
+				resolve({ base64, width, height });
+			};
+			img.onerror = () => reject(new Error('Failed to load image'));
+			img.src = URL.createObjectURL(file);
+		});
+	}
+
+	async function handleImageSelect(e: Event) {
 		const input = e.target as HTMLInputElement;
 		const file = input.files?.[0];
 		if (!file) return;
@@ -47,21 +90,32 @@
 		error = null;
 		response = null;
 
-		// Create preview
-		const reader = new FileReader();
-		reader.onload = () => {
-			imagePreview = reader.result as string;
-			// Extract base64 data (remove data:image/...;base64, prefix)
-			const base64Data = (reader.result as string).split(',')[1];
-			imageBase64 = base64Data;
-		};
-		reader.readAsDataURL(file);
+		try {
+			// Get original dimensions
+			const img = new Image();
+			img.src = URL.createObjectURL(file);
+			await new Promise((resolve) => { img.onload = resolve; });
+			originalSize = { width: img.naturalWidth, height: img.naturalHeight };
+
+			// Resize and convert
+			const resized = await resizeImage(file, MAX_IMAGE_SIZE);
+			imageBase64 = resized.base64;
+			resizedSize = { width: resized.width, height: resized.height };
+
+			// Create preview from resized image
+			imagePreview = `data:image/jpeg;base64,${resized.base64}`;
+		} catch (err) {
+			error = 'Failed to process image';
+			console.error(err);
+		}
 	}
 
 	function clearImage() {
 		selectedImage = null;
 		imagePreview = null;
 		imageBase64 = null;
+		originalSize = null;
+		resizedSize = null;
 		response = null;
 		error = null;
 	}
@@ -79,7 +133,8 @@
 				prompt,
 				image: imageBase64,
 				max_tokens: maxTokens,
-				temperature
+				temperature,
+				fast_mode: fastMode
 			});
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Inference failed';
@@ -151,7 +206,12 @@
 							<button class="clear-image" onclick={clearImage} aria-label="Clear image">×</button>
 						</div>
 						<p class="image-info">
-							{selectedImage?.name} ({((selectedImage?.size ?? 0) / 1024).toFixed(1)} KB)
+							{selectedImage?.name}
+							{#if originalSize && resizedSize}
+								<span class="size-info">
+									{originalSize.width}×{originalSize.height} → {resizedSize.width}×{resizedSize.height}
+								</span>
+							{/if}
 						</p>
 					{:else}
 						<label class="image-dropzone">
@@ -183,6 +243,15 @@
 						rows={3}
 					/>
 
+					<!-- Fast Mode Toggle -->
+					<label class="fast-mode-toggle">
+						<input type="checkbox" bind:checked={fastMode} />
+						<span class="toggle-label">
+							<span class="toggle-title">Fast Mode</span>
+							<span class="toggle-desc">{fastMode ? 'Greedy decoding (~2x faster)' : 'Sampling (better quality)'}</span>
+						</span>
+					</label>
+
 					<div class="params-row">
 						<div class="param">
 							<label for="max-tokens">Max Tokens</label>
@@ -191,7 +260,7 @@
 								type="number"
 								bind:value={maxTokens}
 								min={16}
-								max={2048}
+								max={512}
 								class="number-input"
 							/>
 						</div>
@@ -514,13 +583,66 @@
 		font-size: var(--text-small);
 		color: var(--color-silver);
 		margin-top: var(--space-2);
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.size-info {
+		font-family: var(--font-mono);
+		font-size: var(--text-tiny);
+		color: var(--color-jade);
+		background: rgba(16, 185, 129, 0.1);
+		padding: var(--space-1) var(--space-2);
+		border-radius: var(--radius-sm);
+	}
+
+	/* Fast Mode Toggle */
+	.fast-mode-toggle {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		padding: var(--space-3);
+		background: var(--color-basalt);
+		border-radius: var(--radius-md);
+		cursor: pointer;
+		margin-bottom: var(--space-3);
+		transition: background var(--duration-fast) var(--ease-out);
+	}
+
+	.fast-mode-toggle:hover {
+		background: var(--color-slate);
+	}
+
+	.fast-mode-toggle input[type="checkbox"] {
+		width: 20px;
+		height: 20px;
+		accent-color: var(--color-jade);
+		cursor: pointer;
+	}
+
+	.toggle-label {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.toggle-title {
+		font-size: var(--text-body);
+		font-weight: 500;
+		color: var(--color-chalk);
+	}
+
+	.toggle-desc {
+		font-size: var(--text-tiny);
+		color: var(--color-ash);
 	}
 
 	/* Parameters */
 	.params-row {
 		display: flex;
 		gap: var(--space-4);
-		margin: var(--space-4) 0;
+		margin: var(--space-3) 0;
 	}
 
 	.param {

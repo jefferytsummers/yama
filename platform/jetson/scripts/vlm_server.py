@@ -146,8 +146,9 @@ def infer():
     data = request.json
     prompt = data.get("prompt", "Describe this image.")
     image_data = data.get("image")  # base64 encoded
-    max_tokens = data.get("max_tokens", MAX_NEW_TOKENS)
+    max_tokens = data.get("max_tokens", 100)  # Lower default for faster response
     temperature = data.get("temperature", 0.7)
+    fast_mode = data.get("fast_mode", False)  # Use greedy decoding for speed
 
     if not image_data:
         return jsonify({"error": "No image provided"}), 400
@@ -156,6 +157,14 @@ def infer():
         # Decode image
         image_bytes = base64.b64decode(image_data)
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
+        # Resize to optimal size for LLaVA (336x336 is native, but 384 gives better quality)
+        # This dramatically speeds up preprocessing
+        max_size = 384
+        if max(image.size) > max_size:
+            ratio = max_size / max(image.size)
+            new_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
+            image = image.resize(new_size, Image.Resampling.LANCZOS)
 
         # Format prompt using HuggingFace chat template
         conversation = [
@@ -172,16 +181,27 @@ def infer():
         # Process inputs
         inputs = processor(text=text_prompt, images=image, return_tensors="pt").to("cuda", DTYPE)
 
-        # Generate
+        # Generate with optimized settings
         start = time.time()
         with torch.inference_mode():
-            output = model.generate(
-                **inputs,
-                max_new_tokens=max_tokens,
-                do_sample=True,
-                temperature=temperature,
-                top_p=0.9,
-            )
+            if fast_mode:
+                # Greedy decoding - fastest option
+                output = model.generate(
+                    **inputs,
+                    max_new_tokens=max_tokens,
+                    do_sample=False,
+                    use_cache=True,
+                )
+            else:
+                # Sampling with nucleus - better quality, slightly slower
+                output = model.generate(
+                    **inputs,
+                    max_new_tokens=max_tokens,
+                    do_sample=True,
+                    temperature=temperature,
+                    top_p=0.9,
+                    use_cache=True,
+                )
         gen_time = time.time() - start
 
         # Decode
@@ -200,6 +220,7 @@ def infer():
             "tokens_generated": tokens_generated,
             "generation_time_ms": gen_time_ms,
             "tokens_per_second": tokens_generated / gen_time if gen_time > 0 else 0,
+            "fast_mode": fast_mode,
         })
 
     except Exception as e:

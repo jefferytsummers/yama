@@ -11,6 +11,7 @@ export interface VlmInferenceRequest {
 	image: string; // base64 encoded
 	max_tokens?: number;
 	temperature?: number;
+	fast_mode?: boolean; // Use greedy decoding for speed
 }
 
 export interface VlmInferenceResponse {

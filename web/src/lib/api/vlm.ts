@@ -40,8 +40,9 @@ export class VlmApiClient {
 			body: JSON.stringify({
 				prompt: request.prompt,
 				image: request.image,
-				max_tokens: request.max_tokens ?? 256,
-				temperature: request.temperature ?? 0.7
+				max_tokens: request.max_tokens ?? 100,
+				temperature: request.temperature ?? 0.7,
+				fast_mode: request.fast_mode ?? false
 			})
 		});
 
