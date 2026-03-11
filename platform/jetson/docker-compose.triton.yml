@@ -1,11 +1,11 @@
-# Docker Compose for Triton Inference Server on Jetson
+# Docker Compose for VLM Inference on Jetson Thor
 #
-# Deploys Triton with TensorRT-LLM backend for VLM inference.
+# Deploys VLM inference using LLaVA with optional Triton backend.
 #
 # Prerequisites:
-# 1. NVIDIA Container Toolkit installed
-# 2. TensorRT-LLM engine built for Qwen2.5-VL
-# 3. Sufficient GPU memory (8GB+ recommended)
+# 1. Build VLM container: ./scripts/build_vlm_container.sh
+# 2. Download model: ./scripts/download_llava.sh
+# 3. Docker with nvidia runtime (default on Thor)
 #
 # Usage:
 #   docker-compose -f docker-compose.triton.yml up -d
@@ -14,68 +14,105 @@
 #   - HTTP: http://localhost:8000
 #   - gRPC: localhost:8001
 #   - Metrics: http://localhost:8002
-
-version: '3.8'
+#
+# Target: Jetson Thor (128GB, CUDA 13.0, L4T R38)
 
 services:
-  triton:
-    image: nvcr.io/nvidia/tritonserver:24.01-trtllm-python-py3
-    container_name: yama-triton
+  # Primary VLM inference service using LLaVA
+  vlm:
+    image: yama-vlm:r38
+    container_name: yama-vlm
     runtime: nvidia
     restart: unless-stopped
 
-    # GPU configuration
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-
     # Environment
     environment:
-      # CUDA settings
       - CUDA_VISIBLE_DEVICES=0
       - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-
-      # TensorRT-LLM settings
-      - TRTLLM_LOG_LEVEL=INFO
-
-      # Performance tuning
-      - OMP_NUM_THREADS=4
-      - CUDA_CACHE_PATH=/cache/cuda
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
+      - HF_HOME=/data/cache/huggingface
+      # Model configuration (using HuggingFace-compatible format)
+      - VLM_MODEL_PATH=/data/models/llava/llava-1.5-7b-hf
+      - VLM_DTYPE=float16
+      - VLM_MAX_NEW_TOKENS=512
+      # Memory optimization for 128GB Thor
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+      - OMP_NUM_THREADS=8
 
     # Port mappings
     ports:
-      - "8000:8000"  # HTTP inference
-      - "8001:8001"  # gRPC inference
+      - "8000:8000"  # HTTP API
+      - "8001:8001"  # gRPC (if enabled)
       - "8002:8002"  # Metrics
 
     # Volume mounts
     volumes:
-      # Model repository
-      - ./triton-models:/models:ro
-
-      # TensorRT engine cache
-      - triton-engine-cache:/cache
-
-      # System shared memory (for zero-copy)
+      # Model storage
+      - ${MODELS_PATH:-/home/jeff/data/models}:/data/models:ro
+      # VLM server script
+      - ./scripts/vlm_server.py:/app/vlm_server.py:ro
+      # Cache directory
+      - vlm-cache:/data/cache
+      # Yama event bus socket
+      - /tmp/yama-event.sock:/tmp/yama-event.sock
+      # Shared memory for zero-copy
       - /dev/shm:/dev/shm
 
-    # Shared memory configuration
-    shm_size: '4gb'
+    # Memory configuration (128GB allows generous allocation)
+    shm_size: '16gb'
 
     # Health check
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import torch; assert torch.cuda.is_available()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+    # Run inference server
+    command: ["python3", "/app/vlm_server.py"]
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # Optional: Triton Inference Server for production deployment
+  # Uses custom Python backend for LLaVA
+  triton:
+    image: yama-vlm:r38
+    container_name: yama-triton
+    runtime: nvidia
+    restart: unless-stopped
+    profiles:
+      - triton  # Only start with: docker-compose --profile triton up
+
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+    ports:
+      - "8010:8000"  # HTTP (offset to avoid conflict with vlm service)
+      - "8011:8001"  # gRPC
+      - "8012:8002"  # Metrics
+
+    volumes:
+      - ./triton-models:/models:ro
+      - triton-cache:/cache
+      - /dev/shm:/dev/shm
+
+    shm_size: '16gb'
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/v2/health/ready"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 120s
 
-    # Triton command
     command: >
       tritonserver
       --model-repository=/models
@@ -87,62 +124,46 @@ services:
       --http-port=8000
       --grpc-port=8001
       --metrics-port=8002
-      --allow-http=true
-      --allow-grpc=true
-      --allow-metrics=true
-      --response-cache-byte-size=1073741824
-      --model-control-mode=poll
-      --repository-poll-secs=30
 
-    # Logging
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "3"
-
-  # Optional: Model builder service for building TensorRT-LLM engines
-  model-builder:
-    image: nvcr.io/nvidia/pytorch:24.01-py3
-    container_name: yama-model-builder
+  # Model downloader utility
+  model-downloader:
+    image: yama-vlm:r38
+    container_name: yama-model-downloader
     runtime: nvidia
     profiles:
-      - build
-
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+      - download
 
     environment:
-      - CUDA_VISIBLE_DEVICES=0
-      - HF_HOME=/cache/huggingface
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
+      - HF_HOME=/data/cache/huggingface
 
     volumes:
-      - ./triton-models:/models
-      - model-builder-cache:/cache
-      - ./scripts:/scripts:ro
-
-    working_dir: /workspace
+      - ${MODELS_PATH:-/home/jeff/data/models}:/data/models
+      - vlm-cache:/data/cache
 
     command: >
-      bash -c "
-        echo 'Model builder container ready.'
-        echo 'To build TensorRT-LLM engine, run:'
-        echo '  docker exec -it yama-model-builder python /scripts/build_engine.py'
-        sleep infinity
+      python3 -c "
+      from huggingface_hub import snapshot_download
+      import os
+
+      model_id = os.environ.get('MODEL_ID', 'llava-hf/llava-1.5-7b-hf')
+      local_dir = '/data/models/llava/llava-1.5-7b-hf'
+
+      print(f'Downloading {model_id}...')
+      snapshot_download(
+          repo_id=model_id,
+          local_dir=local_dir,
+          local_dir_use_symlinks=False,
+      )
+      print('Download complete!')
       "
 
 volumes:
-  triton-engine-cache:
+  vlm-cache:
     driver: local
-  model-builder-cache:
+  triton-cache:
     driver: local
 
 networks:
   default:
     name: yama-network
-    external: true

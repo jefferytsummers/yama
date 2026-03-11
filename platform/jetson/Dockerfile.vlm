@@ -1,0 +1,63 @@
+# Yama VLM Container for Jetson Thor
+#
+# Extends the working VILA base image with LLaVA/transformers dependencies
+# Target: Jetson Thor (L4T R38, CUDA 13.0, SM 110)
+#
+# Build:
+#   docker build -t yama-vlm:r38 -f Dockerfile.vlm .
+#
+# Usage:
+#   docker run --runtime nvidia -v /data/models:/data/models yama-vlm:r38
+
+FROM vila:r38.4.arm64-sbsa-cu130-24.04-pytorch_2.10
+
+LABEL maintainer="Yama Project"
+LABEL description="VLM inference container for Jetson Thor"
+LABEL version="1.0"
+
+# Ensure we're using the venv
+ENV PATH="/opt/venv/bin:$PATH"
+ENV VIRTUAL_ENV="/opt/venv"
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libjpeg-dev \
+    libpng-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies for LLaVA/VLM inference
+RUN pip install --no-cache-dir \
+    transformers>=4.40.0 \
+    accelerate>=0.28.0 \
+    safetensors \
+    sentencepiece \
+    protobuf \
+    pillow>=10.0.0 \
+    flask>=3.0.0 \
+    gunicorn \
+    huggingface_hub \
+    einops \
+    tiktoken
+
+# Install bitsandbytes for quantization (if available for aarch64)
+RUN pip install --no-cache-dir bitsandbytes 2>/dev/null || echo "bitsandbytes not available for this platform"
+
+# Set up model directory
+ENV HF_HOME=/data/cache/huggingface
+ENV TRANSFORMERS_CACHE=/data/cache/transformers
+ENV VLM_MODEL_PATH=/data/models/llava/llava-1.5-7b
+
+# Memory optimization for unified memory architecture
+ENV PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+ENV OMP_NUM_THREADS=8
+
+# Expose API port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD python3 -c "import torch; assert torch.cuda.is_available()" || exit 1
+
+# Default command - run inference server
+CMD ["python3", "-c", "print('Yama VLM container ready. Use docker-compose to start the inference server.')"]

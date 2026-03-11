@@ -36,13 +36,17 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 use yama_platform_traits::VlmBackend;
 
+mod flask_backend;
 mod frame_extractor;
 mod triton_backend;
 mod triton_client;
+mod vlm_client;
 
+pub use flask_backend::{FlaskVlmBackend, FlaskVlmConfig};
 pub use frame_extractor::{ExtractionConfig, ExtractedFrame, FrameExtractor, VideoInfo};
 pub use triton_backend::{TritonVlmBackend, TritonVlmConfig};
 pub use triton_client::{TritonClient, TritonClientConfig};
+pub use vlm_client::{VlmClient, VlmClientConfig, VlmInferRequest, VlmInferResponse};
 
 /// Inference job status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -135,8 +139,10 @@ pub enum BackendType {
     /// Mock backend for development/testing.
     Mock,
     /// Triton Inference Server backend (gRPC).
-    #[default]
     Triton,
+    /// Flask-based LLaVA backend (HTTP REST).
+    #[default]
+    Flask,
 }
 
 /// Configuration for the VLM inference service.
@@ -160,6 +166,9 @@ pub struct VlmInferenceConfig {
     /// Triton server configuration.
     #[serde(default)]
     pub triton: TritonVlmConfig,
+    /// Flask VLM server configuration.
+    #[serde(default)]
+    pub flask: FlaskVlmConfig,
 }
 
 fn default_upload_dir() -> PathBuf {
@@ -187,6 +196,7 @@ impl Default for VlmInferenceConfig {
             max_frames: default_max_frames(),
             backend: BackendType::default(),
             triton: TritonVlmConfig::default(),
+            flask: FlaskVlmConfig::default(),
         }
     }
 }
@@ -219,6 +229,14 @@ impl VlmInferenceService {
                         .context("Failed to create Triton backend")?,
                 )
             }
+            BackendType::Flask => {
+                info!("Using Flask LLaVA inference backend");
+                Arc::new(
+                    FlaskVlmBackend::new(config.flask.clone())
+                        .await
+                        .context("Failed to create Flask backend")?,
+                )
+            }
         };
 
         Self::with_backend(config, backend).await
@@ -239,8 +257,15 @@ impl VlmInferenceService {
             backend.name()
         );
 
-        // Available models
+        // Available models (based on backend type)
         let models = vec![
+            VlmModelInfo {
+                id: "llava-1.5-7b".to_string(),
+                name: "LLaVA 1.5 7B".to_string(),
+                description: "High-quality vision-language model".to_string(),
+                max_frames: 300,
+                supports_streaming: false,
+            },
             VlmModelInfo {
                 id: "qwen2.5-vl-7b".to_string(),
                 name: "Qwen2.5-VL 7B".to_string(),

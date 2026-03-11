@@ -1,0 +1,93 @@
+# LLaVA Model Configuration for Triton Inference Server
+#
+# This configuration uses the Python backend to serve LLaVA
+# with HuggingFace Transformers.
+#
+# Model: LLaVA-1.5-7B (or variants)
+# Backend: python
+# Target: Jetson Thor (128GB, CUDA 13.0)
+
+name: "llava"
+backend: "python"
+max_batch_size: 4
+
+input [
+  {
+    name: "prompt"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+  },
+  {
+    name: "image"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+    # Base64 encoded image
+  },
+  {
+    name: "max_tokens"
+    data_type: TYPE_INT32
+    dims: [ 1 ]
+    optional: true
+  },
+  {
+    name: "temperature"
+    data_type: TYPE_FP32
+    dims: [ 1 ]
+    optional: true
+  }
+]
+
+output [
+  {
+    name: "response"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+  },
+  {
+    name: "tokens_generated"
+    data_type: TYPE_INT32
+    dims: [ 1 ]
+  },
+  {
+    name: "inference_time_ms"
+    data_type: TYPE_FP32
+    dims: [ 1 ]
+  }
+]
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_GPU
+    gpus: [ 0 ]
+  }
+]
+
+# Dynamic batching for efficient throughput
+dynamic_batching {
+  preferred_batch_size: [ 1, 2, 4 ]
+  max_queue_delay_microseconds: 100000
+}
+
+# Model parameters
+parameters {
+  key: "model_path"
+  value: { string_value: "/data/models/llava/llava-1.5-7b-hf" }
+}
+parameters {
+  key: "dtype"
+  value: { string_value: "float16" }
+}
+parameters {
+  key: "device_map"
+  value: { string_value: "auto" }
+}
+parameters {
+  key: "low_cpu_mem_usage"
+  value: { string_value: "true" }
+}
+
+# Response cache for repeated prompts
+response_cache {
+  enable: true
+}

@@ -23,6 +23,9 @@ members = [
     "platform/apple/video",
     "platform/apple/inference",
 
+    # Jetson platform (Linux/Vulkan) - temporarily added for compilation check
+    "platform/jetson/host",
+
     # Tauri desktop app
     "src-tauri",
 ]
