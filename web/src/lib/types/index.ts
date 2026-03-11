@@ -4,6 +4,9 @@ export * from './auth';
 // Wizard types
 export * from './wizard';
 
+// VLM types (direct Jetson Flask API)
+export * from './vlm';
+
 // API Types - to be expanded in Phase 4
 
 export interface Session {
