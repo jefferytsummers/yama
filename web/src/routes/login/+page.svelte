@@ -1,14 +1,23 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
 	import { Input, Button } from '$lib/components';
 	import OAuthButtons from '$lib/components/OAuthButtons.svelte';
 	import { auth, isAuthenticated } from '$lib/stores';
+	import { isTauri } from '$lib/tauri/commands';
 	import type { OAuthProvider } from '$lib/types';
 
 	let email = $state('');
 	let password = $state('');
 	let isLoading = $state(false);
 	let error = $state<string | null>(null);
+
+	// Tauri app goes straight to dashboard - login is website-only
+	onMount(() => {
+		if (isTauri()) {
+			goto('/dashboard');
+		}
+	});
 
 	// Redirect authenticated users
 	$effect(() => {

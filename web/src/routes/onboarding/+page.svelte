@@ -3,18 +3,48 @@
 	import { isAuthenticated } from '$lib/stores';
 	import type { ProjectData } from '$lib/types';
 	import ProjectWizard from '$lib/components/ProjectWizard.svelte';
+	import { projectsApi } from '$lib/api/projects';
 
-	// Redirect unauthenticated users
+	// Note: Tauri redirect handled by +layout.svelte
+
+	// Redirect unauthenticated users (website only)
 	$effect(() => {
 		if (!$isAuthenticated) {
 			goto('/signup');
 		}
 	});
 
-	function handleComplete(data: ProjectData) {
-		// Store project data in sessionStorage for the success page
-		sessionStorage.setItem('onboarding_project', JSON.stringify(data));
-		goto('/onboarding/success');
+	let isCreating = $state(false);
+	let error = $state<string | null>(null);
+
+	async function handleComplete(data: ProjectData) {
+		if (isCreating) return;
+
+		isCreating = true;
+		error = null;
+
+		try {
+			// Create the project in the backend
+			const project = await projectsApi.create({
+				name: data.name,
+				description: data.description || undefined,
+				tags: data.tags
+			});
+
+			// Store project data and ID in sessionStorage for the success page
+			sessionStorage.setItem(
+				'onboarding_project',
+				JSON.stringify({
+					...data,
+					id: project.id
+				})
+			);
+			goto('/onboarding/success');
+		} catch (e) {
+			console.error('Failed to create project:', e);
+			error = e instanceof Error ? e.message : 'Failed to create project';
+			isCreating = false;
+		}
 	}
 
 	function handleCancel() {

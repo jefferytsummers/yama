@@ -17,10 +17,12 @@ use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 use tracing::info;
 
+// Import ServiceState from the crate root (lib.rs)
 use crate::ServiceState;
 
 mod handlers;
 pub mod inference_handlers;
+mod project_handlers;
 mod routes;
 
 /// HTTP server configuration.

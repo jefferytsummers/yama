@@ -1,6 +1,6 @@
 //! API route definitions for the HTTP server.
 //!
-//! Routes are organized into two categories:
+//! Routes are organized into three categories:
 //!
 //! ## Admin Routes (Control Plane)
 //! For the web dashboard - system operators monitoring and managing services.
@@ -11,6 +11,13 @@
 //! - `/api/config` - Configuration
 //! - `/api/metrics` - System metrics
 //! - `/api/video-sources` - Video source management
+//!
+//! ## Project Routes (Data Management)
+//! For project and library management.
+//! Mounted at `/api/` and include:
+//! - `/api/projects` - List/create projects
+//! - `/api/projects/{id}` - Get/delete project
+//! - `/api/projects/{id}/libraries` - List/create libraries
 //!
 //! ## Inference API Routes (Data Plane)
 //! For external tools and scripts that need programmatic access to VLM inference.
@@ -24,20 +31,23 @@
 use std::sync::Arc;
 
 use axum::extract::DefaultBodyLimit;
-use axum::routing::{get, post, put};
+use axum::routing::{delete, get, post, put};
 use axum::Router;
 
 use crate::ServiceState;
 
 use super::handlers;
 use super::inference_handlers;
+use super::project_handlers;
 
 /// Build the complete API router with all endpoints.
 ///
-/// This combines admin routes (for web dashboard) and inference API routes
-/// (for external tools/scripts).
+/// This combines admin routes (for web dashboard), project routes (for project management),
+/// and inference API routes (for external tools/scripts).
 pub fn api_routes(state: Arc<ServiceState>) -> Router {
-    admin_routes(state.clone()).merge(inference_api_routes(state))
+    admin_routes(state.clone())
+        .merge(project_routes(state.clone()))
+        .merge(inference_api_routes(state))
 }
 
 /// Admin routes for the web dashboard (control plane).
@@ -65,6 +75,34 @@ pub fn admin_routes(state: Arc<ServiceState>) -> Router {
         .route("/metrics", get(handlers::get_metrics))
         // Video sources
         .route("/video-sources", get(handlers::list_video_sources))
+        .with_state(state)
+}
+
+/// Project management routes.
+///
+/// These endpoints manage projects and libraries for the web UI:
+/// - `/projects` - List/create projects
+/// - `/projects/:id` - Get/delete project
+/// - `/projects/:id/libraries` - List/create libraries
+pub fn project_routes(state: Arc<ServiceState>) -> Router {
+    Router::new()
+        // Projects
+        .route("/projects", get(project_handlers::list_projects_handler))
+        .route("/projects", post(project_handlers::create_project_handler))
+        .route("/projects/{id}", get(project_handlers::get_project_handler))
+        .route(
+            "/projects/{id}",
+            delete(project_handlers::delete_project_handler),
+        )
+        // Libraries
+        .route(
+            "/projects/{id}/libraries",
+            get(project_handlers::list_libraries_handler),
+        )
+        .route(
+            "/projects/{id}/libraries",
+            post(project_handlers::create_library_handler),
+        )
         .with_state(state)
 }
 

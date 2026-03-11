@@ -8,6 +8,7 @@ description = "Yama host compositor for Apple Silicon (Metal/MoltenVK)"
 [[bin]]
 name = "yama"
 path = "src/main.rs"
+required-features = ["gui"]
 
 [[bin]]
 name = "yama-headless"
@@ -23,23 +24,21 @@ yama-protocol = { path = "../../../shared/protocol" }
 yama-platform-traits = { workspace = true }
 yama-agent-sdk = { path = "../../../shared/agent-sdk" }
 yama-container-sdk = { path = "../../../shared/container-sdk" }
-yama-theme = { path = "../../../shared/yama-theme" }
+yama-theme = { path = "../../../shared/yama-theme", optional = true }
 
 # Async runtime
 tokio = { workspace = true }
 futures-util = { workspace = true }
 async-trait = { workspace = true }
 
-# Graphics (Metal-based rendering on macOS, no Smithay/Wayland)
+# Graphics (Metal-based rendering on macOS)
 wgpu = { workspace = true }
-ash = { workspace = true }
 
-# GUI
-egui = { workspace = true }
-egui_dock = { workspace = true }
-eframe = { workspace = true }
+# GUI (optional for headless mode)
+egui = { workspace = true, optional = true }
+eframe = { workspace = true, optional = true }
 
-# GStreamer
+# GStreamer (video processing)
 gstreamer = { workspace = true }
 gstreamer-app = { workspace = true }
 gstreamer-video = { workspace = true }
@@ -66,7 +65,7 @@ reqwest = { version = "0.12", features = ["stream"] }
 # File handling
 tempfile = { workspace = true }
 uuid = { workspace = true }
-rfd = "0.15"
+rfd = { version = "0.15", optional = true }
 
 # Concurrency
 dashmap = { workspace = true }
@@ -98,16 +97,8 @@ mistralrs = { version = "0.7", default-features = false, features = ["metal"], o
 # Image processing (for VLM input conversion)
 image = { workspace = true }
 
-# ONNX Runtime for embeddings (CLIP, text embeddings)
-ort = { version = "2.0.0-rc.12", features = ["coreml", "ndarray"] }
-ndarray = "0.17"
-
-# Whisper transcription (with Metal acceleration)
-whisper-rs = "0.12"
-
-# Audio processing
-gstreamer-audio = "0.23"
-bytemuck = { version = "1.14", features = ["derive"] }
+# Archived dependencies (were used by embedding/transcription/indexer):
+# ort, ndarray, whisper-rs, gstreamer-audio, bytemuck
 
 # JSON Schema validation for tool input
 jsonschema = "0.18"
@@ -123,8 +114,10 @@ yama-test-harness = { path = "../../../shared/test-harness" }
 tokio-test = "0.4"
 
 [features]
-default = ["metal"]
+default = ["metal", "gui"]
 metal = []
 moltenvk = []
+# GUI dependencies (egui + eframe) - disabled for headless/Tauri mode
+gui = ["dep:egui", "dep:eframe", "dep:rfd", "dep:yama-theme"]
 # Enable direct in-process VLM inference (requires Xcode for Metal shader compilation)
 direct-vlm = ["dep:mistralrs"]

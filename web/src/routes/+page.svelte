@@ -9,6 +9,15 @@
 		RoadmapTimeline
 	} from '$lib/components';
 	import { isAuthenticated } from '$lib/stores';
+	import { isTauri } from '$lib/tauri/commands';
+	import { onMount } from 'svelte';
+
+	// Tauri app goes straight to dashboard - splash page is website-only
+	onMount(() => {
+		if (isTauri()) {
+			goto('/dashboard');
+		}
+	});
 
 	// Redirect authenticated users to dashboard
 	$effect(() => {

@@ -12,7 +12,7 @@ use tokio::io::AsyncWriteExt;
 use tracing::{error, info};
 use uuid::Uuid;
 
-use yama_host_apple::inference::{InferenceChunk, JobStatus, UploadInfo, VlmModelInfo};
+use crate::inference::{InferenceChunk, JobStatus, UploadInfo, VlmModelInfo};
 use crate::ServiceState;
 
 /// Upload response.

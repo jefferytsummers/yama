@@ -22,6 +22,9 @@ members = [
     "platform/apple/host",
     "platform/apple/video",
     "platform/apple/inference",
+
+    # Tauri desktop app
+    "src-tauri",
 ]
 
 # Platform-specific members are conditionally included based on sparse-checkout.
@@ -58,10 +61,6 @@ base64 = "0.22"
 # UUID generation
 uuid = { version = "1", features = ["v4", "serde"] }
 
-# WebRTC
-webrtc = "0.12"
-webrtc-util = "0.9"
-
 # Internal crates
 yama-platform-traits = { path = "shared/platform-traits" }
 
@@ -95,15 +94,10 @@ tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
 
 # GUI
 egui = "0.29"
-egui_dock = "0.15"
 eframe = "0.29"
-
-# Compositor (Smithay)
-smithay = "0.3"
 
 # Graphics
 wgpu = "0.20"
-ash = "0.38"
 
 # Configuration
 toml = "0.8"

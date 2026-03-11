@@ -12,6 +12,28 @@ use tracing::error;
 use crate::orchestrator::ServiceStatus;
 use crate::ServiceState;
 
+/// Default compositor config values (for headless mode).
+mod compositor_defaults {
+    pub fn backend() -> String {
+        "wgpu".to_string()
+    }
+    pub fn renderer() -> String {
+        "metal".to_string()
+    }
+    pub fn fps() -> u32 {
+        60
+    }
+    pub fn vsync() -> bool {
+        true
+    }
+    pub fn width() -> u32 {
+        1920
+    }
+    pub fn height() -> u32 {
+        1080
+    }
+}
+
 /// Health check response.
 #[derive(Debug, Serialize)]
 pub struct HealthResponse {
@@ -172,13 +194,14 @@ pub async fn get_config(State(state): State<Arc<ServiceState>>) -> Json<ConfigRe
     let config = &state.config;
 
     Json(ConfigResponse {
+        // Compositor uses defaults in headless mode (no GUI compositor running)
         compositor: CompositorConfigInfo {
-            backend: config.compositor.backend.clone(),
-            renderer: config.compositor.renderer.clone(),
-            fps: config.compositor.fps,
-            vsync: config.compositor.vsync,
-            width: config.compositor.width,
-            height: config.compositor.height,
+            backend: compositor_defaults::backend(),
+            renderer: compositor_defaults::renderer(),
+            fps: compositor_defaults::fps(),
+            vsync: compositor_defaults::vsync(),
+            width: compositor_defaults::width(),
+            height: compositor_defaults::height(),
         },
         event_bus: EventBusConfigInfo {
             websocket_bind: config.event_bus.websocket_bind.clone(),
@@ -353,8 +376,8 @@ pub async fn get_status(State(state): State<Arc<ServiceState>>) -> Json<HostStat
         },
         compositor: SubsystemStatus {
             name: "Compositor",
-            status: "running",
-            details: format!("{} @ {}fps", state.config.compositor.renderer, state.config.compositor.fps),
+            status: "headless",
+            details: format!("Tauri webview @ {}fps", compositor_defaults::fps()),
         },
         inference: inference_status,
     })
