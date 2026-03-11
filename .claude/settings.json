@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/claude-code/main/schemas/settings.json",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": {
+          "tool": "Edit|Write",
+          "conditions": {
+            "path": "\\.rs$"
+          }
+        },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cargo fmt --quiet 2>/dev/null || true",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": {
+          "tool": "Edit|Write",
+          "conditions": {
+            "path": "\\.(ts|svelte|js)$"
+          }
+        },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd web && npx prettier --write \"$CLAUDE_FILE_PATH\" 2>/dev/null || true",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}

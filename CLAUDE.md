@@ -43,6 +43,23 @@ cd web && npm run dev           # Web frontend dev server
 - Event Bus: ws://localhost:8765 (Protobuf pub/sub)
 - Unix Socket: /tmp/yama-event.sock (container IPC)
 
+## Current Phase: 4 (API Layer)
+
+Active plan: `.claude/plans/crystalline-jumping-muffin.md`
+
+### Phase 4 Skills (API Development)
+- `/api-endpoint` - Implement HTTP endpoints with SSE
+- `/streaming-patterns` - SSE/WebSocket reference
+
+### Phase 5 Skills (UI Development)
+- `/sveltekit-component` - Create SvelteKit components
+- `/frontend-design` - Design system reference
+
+### Review Agents
+- `api-reviewer` - Review API implementations
+- `component-reviewer` - Review SvelteKit components
+- `test-validator` - Validate test coverage
+
 ## Progressive Disclosure
 
 For frontend design/components:
@@ -68,6 +85,15 @@ For video analysis skill:
 
 For code review skill:
 @.claude/skills/code-review/SKILL.md
+
+For API endpoint patterns:
+@.claude/skills/api-endpoint/SKILL.md
+
+For SSE streaming patterns:
+@.claude/skills/streaming-patterns/SKILL.md
+
+For SvelteKit components:
+@.claude/skills/sveltekit-component/SKILL.md
 
 ## Deep Reference
 
