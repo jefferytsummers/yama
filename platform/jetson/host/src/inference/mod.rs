@@ -1,10 +1,28 @@
-//! VLM Video Inference Service
+//! VLM Video Inference Service for NVIDIA Jetson
 //!
-//! Provides video analysis using Vision Language Models. Supports:
-//! - Single video file upload and analysis
-//! - Frame extraction and chunking
-//! - Streaming results via event bus
-//! - Swappable backends (mock, event bus, direct)
+//! Provides video analysis using Vision Language Models on Jetson hardware.
+//! Uses Triton Inference Server with TensorRT-LLM for optimized inference.
+//!
+//! # Architecture
+//!
+//! ```text
+//! ┌──────────────────────────────────────────────────────────────────┐
+//! │                    VlmInferenceService                           │
+//! │  ┌────────────────────────────────────────────────────────────┐  │
+//! │  │  TritonVlmBackend                                          │  │
+//! │  │  - gRPC client to Triton Server                            │  │
+//! │  │  - System shared memory for zero-copy                      │  │
+//! │  │  - TensorRT-LLM request formatting                         │  │
+//! │  └────────────────────────────────────────────────────────────┘  │
+//! │                              │                                    │
+//! │                              ▼                                    │
+//! │  ┌────────────────────────────────────────────────────────────┐  │
+//! │  │  Triton Inference Server (Docker)                          │  │
+//! │  │  - TensorRT-LLM engine                                     │  │
+//! │  │  - Qwen2.5-VL model                                        │  │
+//! │  └────────────────────────────────────────────────────────────┘  │
+//! └──────────────────────────────────────────────────────────────────┘
+//! ```
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -16,26 +34,15 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+use yama_platform_traits::VlmBackend;
 
-mod backend;
-#[cfg(feature = "direct-vlm")]
-mod direct_backend;
-mod event_bus_backend;
 mod frame_extractor;
-mod mock_backend;
+mod triton_backend;
+mod triton_client;
 
-pub use backend::InferenceBackend;
-#[cfg(feature = "direct-vlm")]
-pub use direct_backend::{create_direct_backend, DirectVlmBackend, DirectVlmConfig};
-pub use event_bus_backend::{create_event_bus_backend, EventBusBackend};
 pub use frame_extractor::{ExtractionConfig, ExtractedFrame, FrameExtractor, VideoInfo};
-pub use mock_backend::MockBackend;
-
-// Re-export unified VlmBackend trait from platform-traits
-pub use yama_platform_traits::{
-    VlmBackend, VlmBatchRequest, VlmBatchResult, VlmCapabilities, VlmGenerationParams,
-    VlmImageSource, VlmPixelFormat, VlmRequest, VlmResponse,
-};
+pub use triton_backend::{TritonVlmBackend, TritonVlmConfig};
+pub use triton_client::{TritonClient, TritonClientConfig};
 
 /// Inference job status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -126,13 +133,10 @@ pub struct VlmModelInfo {
 #[serde(rename_all = "lowercase")]
 pub enum BackendType {
     /// Mock backend for development/testing.
-    #[default]
     Mock,
-    /// Event bus backend for VLM container communication.
-    EventBus,
-    /// Direct in-process VLM backend (requires `direct-vlm` feature and Xcode).
-    #[cfg(feature = "direct-vlm")]
-    Direct,
+    /// Triton Inference Server backend (gRPC).
+    #[default]
+    Triton,
 }
 
 /// Configuration for the VLM inference service.
@@ -153,9 +157,9 @@ pub struct VlmInferenceConfig {
     /// Backend type to use.
     #[serde(default)]
     pub backend: BackendType,
-    /// Enable mock inference (deprecated, use backend field).
-    #[serde(default = "default_mock_enabled")]
-    pub mock_enabled: bool,
+    /// Triton server configuration.
+    #[serde(default)]
+    pub triton: TritonVlmConfig,
 }
 
 fn default_upload_dir() -> PathBuf {
@@ -174,10 +178,6 @@ fn default_max_frames() -> u32 {
     300 // 5 minutes at 1fps
 }
 
-fn default_mock_enabled() -> bool {
-    true
-}
-
 impl Default for VlmInferenceConfig {
     fn default() -> Self {
         Self {
@@ -186,77 +186,48 @@ impl Default for VlmInferenceConfig {
             frame_interval_ms: default_frame_interval_ms(),
             max_frames: default_max_frames(),
             backend: BackendType::default(),
-            mock_enabled: default_mock_enabled(),
+            triton: TritonVlmConfig::default(),
         }
     }
 }
 
-impl VlmInferenceConfig {
-    /// Get the effective backend type.
-    pub fn effective_backend(&self) -> BackendType {
-        // Backend field takes precedence when explicitly set to non-default
-        // mock_enabled is deprecated - only use as fallback
-        self.backend
-    }
-}
-
-/// VLM Inference Service.
+/// VLM Inference Service for Jetson.
 ///
 /// Manages video uploads, inference jobs, and model interactions.
-/// Uses a pluggable backend for actual inference execution.
+/// Uses Triton Inference Server for VLM inference.
 pub struct VlmInferenceService {
     config: VlmInferenceConfig,
     jobs: Arc<RwLock<HashMap<String, InferenceJob>>>,
     uploads: Arc<RwLock<HashMap<String, UploadInfo>>>,
     models: Vec<VlmModelInfo>,
-    backend: Arc<dyn InferenceBackend>,
+    backend: Arc<dyn VlmBackend>,
 }
 
 impl VlmInferenceService {
-    /// Create a new VLM inference service with the default backend.
+    /// Create a new VLM inference service.
     pub async fn new(config: VlmInferenceConfig) -> Result<Self> {
-        let backend: Arc<dyn InferenceBackend> = match config.effective_backend() {
+        let backend: Arc<dyn VlmBackend> = match config.backend {
             BackendType::Mock => {
                 info!("Using mock inference backend");
                 Arc::new(MockBackend::new())
             }
-            BackendType::EventBus => {
-                info!("Using event bus inference backend");
-                Arc::new(create_event_bus_backend(&config).await?)
-            }
-            #[cfg(feature = "direct-vlm")]
-            BackendType::Direct => {
-                info!("Using direct in-process VLM backend");
-                Arc::new(create_direct_backend(&config))
+            BackendType::Triton => {
+                info!("Using Triton inference backend");
+                Arc::new(
+                    TritonVlmBackend::new(config.triton.clone())
+                        .await
+                        .context("Failed to create Triton backend")?,
+                )
             }
         };
 
         Self::with_backend(config, backend).await
     }
 
-    /// Create a mock VLM inference service for testing.
-    ///
-    /// This creates a synchronous mock that doesn't require async or file system access.
-    pub fn new_mock() -> Self {
-        Self {
-            config: VlmInferenceConfig::default(),
-            jobs: Arc::new(RwLock::new(HashMap::new())),
-            uploads: Arc::new(RwLock::new(HashMap::new())),
-            models: vec![VlmModelInfo {
-                id: "mock".to_string(),
-                name: "Mock Model".to_string(),
-                description: "Mock model for testing".to_string(),
-                max_frames: 100,
-                supports_streaming: false,
-            }],
-            backend: Arc::new(MockBackend::new()),
-        }
-    }
-
     /// Create a new VLM inference service with a specific backend.
     pub async fn with_backend(
         config: VlmInferenceConfig,
-        backend: Arc<dyn InferenceBackend>,
+        backend: Arc<dyn VlmBackend>,
     ) -> Result<Self> {
         // Ensure upload directory exists
         tokio::fs::create_dir_all(&config.upload_dir)
@@ -271,23 +242,16 @@ impl VlmInferenceService {
         // Available models
         let models = vec![
             VlmModelInfo {
-                id: "vlm-default".to_string(),
-                name: "VLM Default".to_string(),
-                description: "General-purpose video understanding model".to_string(),
+                id: "qwen2.5-vl-7b".to_string(),
+                name: "Qwen2.5-VL 7B".to_string(),
+                description: "High-quality video understanding model".to_string(),
                 max_frames: 300,
                 supports_streaming: true,
             },
             VlmModelInfo {
-                id: "vlm-fast".to_string(),
-                name: "VLM Fast".to_string(),
-                description: "Optimized for speed with lower accuracy".to_string(),
-                max_frames: 100,
-                supports_streaming: true,
-            },
-            VlmModelInfo {
-                id: "vlm-detailed".to_string(),
-                name: "VLM Detailed".to_string(),
-                description: "Maximum detail analysis, slower processing".to_string(),
+                id: "qwen2.5-vl-3b".to_string(),
+                name: "Qwen2.5-VL 3B".to_string(),
+                description: "Fast video understanding model".to_string(),
                 max_frames: 500,
                 supports_streaming: true,
             },
@@ -315,6 +279,11 @@ impl VlmInferenceService {
     /// Get the backend name.
     pub fn backend_name(&self) -> &'static str {
         self.backend.name()
+    }
+
+    /// Get the VLM backend for direct access.
+    pub fn backend(&self) -> &Arc<dyn VlmBackend> {
+        &self.backend
     }
 
     /// List available VLM models.
@@ -397,73 +366,9 @@ impl VlmInferenceService {
         }
     }
 
-    /// Start inference on a video.
-    pub async fn start_inference(&self, job_id: String, upload_id: String) -> Result<()> {
-        // Get upload info
-        let upload = self
-            .get_upload(&upload_id)
-            .await
-            .context("Upload not found")?;
-
-        // Update job with video path
-        {
-            let mut jobs = self.jobs.write().await;
-            if let Some(job) = jobs.get_mut(&job_id) {
-                job.video_path = Some(upload.path.clone());
-                job.status = JobStatus::Extracting;
-            }
-        }
-
-        // Get job info for the async task
-        let job = self.get_job(&job_id).await.context("Job not found")?;
-
-        // Clone what we need for the async task
-        let jobs = self.jobs.clone();
-        let backend = self.backend.clone();
-
-        // Spawn the inference task
-        tokio::spawn(async move {
-            if let Err(e) = backend.run_inference(jobs, job_id.clone(), job).await {
-                error!("Inference failed for job {}: {}", job_id, e);
-            }
-        });
-
-        Ok(())
-    }
-
-    /// Run inference synchronously (for headless mode).
-    pub async fn run_inference_sync(&self, job_id: &str, upload_id: &str) -> Result<InferenceJob> {
-        // Get upload info
-        let upload = self
-            .get_upload(upload_id)
-            .await
-            .context("Upload not found")?;
-
-        // Update job with video path
-        {
-            let mut jobs = self.jobs.write().await;
-            if let Some(job) = jobs.get_mut(job_id) {
-                job.video_path = Some(upload.path.clone());
-                job.status = JobStatus::Extracting;
-            }
-        }
-
-        // Get job info
-        let job = self.get_job(job_id).await.context("Job not found")?;
-
-        // Run inference synchronously
-        self.backend
-            .run_inference(self.jobs.clone(), job_id.to_string(), job)
-            .await?;
-
-        // Return the completed job
-        self.get_job(job_id).await.context("Job disappeared")
-    }
-
-    /// Clean up old uploads and jobs.
-    pub async fn cleanup(&self, max_age: Duration) {
-        debug!("Cleanup triggered with max_age: {:?}", max_age);
-        // TODO: Implement cleanup of old files and completed jobs
+    /// Check if the backend is ready.
+    pub async fn is_ready(&self) -> bool {
+        self.backend.is_ready().await
     }
 
     /// Delete a job.
@@ -472,9 +377,78 @@ impl VlmInferenceService {
         jobs.remove(job_id).is_some()
     }
 
-    /// Check if the backend is ready.
-    pub async fn is_ready(&self) -> bool {
-        self.backend.is_ready().await
+    /// Clean up old uploads and jobs.
+    pub async fn cleanup(&self, max_age: Duration) {
+        debug!("Cleanup triggered with max_age: {:?}", max_age);
+        // TODO: Implement cleanup of old files and completed jobs
+    }
+}
+
+/// Mock backend for testing.
+pub struct MockBackend {
+    capabilities: yama_platform_traits::VlmCapabilities,
+}
+
+impl MockBackend {
+    pub fn new() -> Self {
+        Self {
+            capabilities: yama_platform_traits::VlmCapabilities {
+                name: "mock".to_string(),
+                model: "mock-model".to_string(),
+                max_image_width: 4096,
+                max_image_height: 4096,
+                max_tokens: 4096,
+                supported_formats: vec![yama_platform_traits::VlmPixelFormat::Jpeg],
+                supports_batch: false,
+                supports_streaming: false,
+                supports_shared_memory: false,
+                accelerator: "CPU".to_string(),
+                estimated_throughput: 1.0,
+            },
+        }
+    }
+}
+
+impl Default for MockBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait::async_trait]
+impl VlmBackend for MockBackend {
+    fn capabilities(&self) -> &yama_platform_traits::VlmCapabilities {
+        &self.capabilities
+    }
+
+    async fn analyze(
+        &self,
+        request: yama_platform_traits::VlmRequest,
+    ) -> yama_platform_traits::PlatformResult<yama_platform_traits::VlmResponse> {
+        // Simulate some processing time
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        Ok(yama_platform_traits::VlmResponse {
+            request_id: request.request_id,
+            analysis: "Mock analysis: This is a test image showing typical video content."
+                .to_string(),
+            inference_time_ms: 100.0,
+            tokens_generated: 15,
+            model: "mock-model".to_string(),
+        })
+    }
+
+    async fn is_ready(&self) -> bool {
+        true
+    }
+
+    async fn warmup(&self) -> yama_platform_traits::PlatformResult<()> {
+        info!("Mock backend warmup (no-op)");
+        Ok(())
+    }
+
+    fn name(&self) -> &'static str {
+        "mock"
     }
 }
 
@@ -482,60 +456,27 @@ impl VlmInferenceService {
 mod tests {
     use super::*;
 
-    fn mock_config() -> VlmInferenceConfig {
-        VlmInferenceConfig {
-            backend: BackendType::Mock,
-            ..Default::default()
-        }
+    #[tokio::test]
+    async fn test_mock_backend() {
+        let backend = MockBackend::new();
+        assert_eq!(backend.name(), "mock");
+        assert!(backend.is_ready().await);
     }
 
     #[tokio::test]
     async fn test_create_job() {
-        let config = mock_config();
-        let service = VlmInferenceService::new(config).await.unwrap();
+        let config = VlmInferenceConfig {
+            backend: BackendType::Mock,
+            ..Default::default()
+        };
 
+        let service = VlmInferenceService::new(config).await.unwrap();
         let job_id = service
-            .create_job("vlm-default".to_string(), "Describe this video".to_string())
+            .create_job("qwen2.5-vl-7b".to_string(), "Describe this video".to_string())
             .await;
 
         let job = service.get_job(&job_id).await;
         assert!(job.is_some());
-
-        let job = job.unwrap();
-        assert_eq!(job.status, JobStatus::Queued);
-        assert_eq!(job.model, "vlm-default");
-    }
-
-    #[tokio::test]
-    async fn test_list_models() {
-        let config = mock_config();
-        let service = VlmInferenceService::new(config).await.unwrap();
-
-        let models = service.list_models();
-        assert!(!models.is_empty());
-        assert!(models.iter().any(|m| m.id == "vlm-default"));
-    }
-
-    #[tokio::test]
-    async fn test_backend_name() {
-        let config = mock_config();
-        let service = VlmInferenceService::new(config).await.unwrap();
-        assert_eq!(service.backend_name(), "mock");
-    }
-
-    #[tokio::test]
-    async fn test_with_custom_backend() {
-        let config = mock_config();
-        let backend: Arc<dyn InferenceBackend> = Arc::new(MockBackend::with_delay(1));
-        let service = VlmInferenceService::with_backend(config, backend)
-            .await
-            .unwrap();
-        assert_eq!(service.backend_name(), "mock");
-    }
-
-    #[test]
-    fn test_default_backend_is_mock() {
-        let config = VlmInferenceConfig::default();
-        assert_eq!(config.effective_backend(), BackendType::Mock);
+        assert_eq!(job.unwrap().status, JobStatus::Queued);
     }
 }

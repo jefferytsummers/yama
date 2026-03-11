@@ -4,14 +4,57 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Project-level configuration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ProjectConfig {
+    /// Default preset ID for new chat sessions.
+    #[serde(default)]
+    pub default_preset_id: Option<String>,
+    /// Default model to use.
+    #[serde(default)]
+    pub default_model: Option<String>,
+    /// Enabled tools for this project.
+    #[serde(default)]
+    pub enabled_tools: Vec<String>,
+}
+
 /// A project organizes video libraries.
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
+    pub config: Option<ProjectConfig>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// A project row without config parsing (for direct DB queries).
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ProjectRow {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub config: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl ProjectRow {
+    /// Convert to Project with parsed config.
+    pub fn into_project(self) -> Project {
+        let config = self.config
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok());
+        Project {
+            id: self.id,
+            name: self.name,
+            description: self.description,
+            config,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+        }
+    }
 }
 
 /// A library is a directory containing videos.
@@ -258,6 +301,7 @@ pub struct WordTimestamp {
 pub struct NewProject {
     pub name: String,
     pub description: Option<String>,
+    pub config: Option<ProjectConfig>,
 }
 
 /// Input for creating a new library.

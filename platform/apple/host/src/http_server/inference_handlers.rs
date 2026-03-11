@@ -68,9 +68,20 @@ pub async fn upload_video(
             .map(|s| s.to_string())
             .unwrap_or_else(|| "video/mp4".to_string());
 
-        // Validate content type
+        // Validate content type or file extension
         let valid_types = ["video/mp4", "video/webm", "video/quicktime", "video/x-msvideo"];
-        if !valid_types.iter().any(|t| content_type.starts_with(t)) {
+        let valid_extensions = ["mp4", "webm", "mov", "avi", "m4v"];
+
+        let extension = std::path::Path::new(&filename)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+
+        // Accept if either content type matches OR if it's application/octet-stream with valid extension
+        let content_type_valid = valid_types.iter().any(|t| content_type.starts_with(t));
+        let extension_valid = valid_extensions.contains(&extension.to_lowercase().as_str());
+
+        if !content_type_valid && !(content_type == "application/octet-stream" && extension_valid) {
             return (
                 StatusCode::BAD_REQUEST,
                 Json(UploadResponse {
@@ -78,7 +89,7 @@ pub async fn upload_video(
                     upload_id: None,
                     filename: Some(filename),
                     size: None,
-                    message: format!("Invalid content type: {}. Supported: mp4, webm, mov", content_type),
+                    message: format!("Invalid content type: {}. Supported: mp4, webm, mov, avi", content_type),
                 }),
             );
         }

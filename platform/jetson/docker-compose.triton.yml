@@ -1,0 +1,148 @@
+# Docker Compose for Triton Inference Server on Jetson
+#
+# Deploys Triton with TensorRT-LLM backend for VLM inference.
+#
+# Prerequisites:
+# 1. NVIDIA Container Toolkit installed
+# 2. TensorRT-LLM engine built for Qwen2.5-VL
+# 3. Sufficient GPU memory (8GB+ recommended)
+#
+# Usage:
+#   docker-compose -f docker-compose.triton.yml up -d
+#
+# Endpoints:
+#   - HTTP: http://localhost:8000
+#   - gRPC: localhost:8001
+#   - Metrics: http://localhost:8002
+
+version: '3.8'
+
+services:
+  triton:
+    image: nvcr.io/nvidia/tritonserver:24.01-trtllm-python-py3
+    container_name: yama-triton
+    runtime: nvidia
+    restart: unless-stopped
+
+    # GPU configuration
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    # Environment
+    environment:
+      # CUDA settings
+      - CUDA_VISIBLE_DEVICES=0
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+      # TensorRT-LLM settings
+      - TRTLLM_LOG_LEVEL=INFO
+
+      # Performance tuning
+      - OMP_NUM_THREADS=4
+      - CUDA_CACHE_PATH=/cache/cuda
+
+    # Port mappings
+    ports:
+      - "8000:8000"  # HTTP inference
+      - "8001:8001"  # gRPC inference
+      - "8002:8002"  # Metrics
+
+    # Volume mounts
+    volumes:
+      # Model repository
+      - ./triton-models:/models:ro
+
+      # TensorRT engine cache
+      - triton-engine-cache:/cache
+
+      # System shared memory (for zero-copy)
+      - /dev/shm:/dev/shm
+
+    # Shared memory configuration
+    shm_size: '4gb'
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v2/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+    # Triton command
+    command: >
+      tritonserver
+      --model-repository=/models
+      --strict-model-config=false
+      --log-verbose=1
+      --log-info=true
+      --log-warning=true
+      --log-error=true
+      --http-port=8000
+      --grpc-port=8001
+      --metrics-port=8002
+      --allow-http=true
+      --allow-grpc=true
+      --allow-metrics=true
+      --response-cache-byte-size=1073741824
+      --model-control-mode=poll
+      --repository-poll-secs=30
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # Optional: Model builder service for building TensorRT-LLM engines
+  model-builder:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    container_name: yama-model-builder
+    runtime: nvidia
+    profiles:
+      - build
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - HF_HOME=/cache/huggingface
+
+    volumes:
+      - ./triton-models:/models
+      - model-builder-cache:/cache
+      - ./scripts:/scripts:ro
+
+    working_dir: /workspace
+
+    command: >
+      bash -c "
+        echo 'Model builder container ready.'
+        echo 'To build TensorRT-LLM engine, run:'
+        echo '  docker exec -it yama-model-builder python /scripts/build_engine.py'
+        sleep infinity
+      "
+
+volumes:
+  triton-engine-cache:
+    driver: local
+  model-builder-cache:
+    driver: local
+
+networks:
+  default:
+    name: yama-network
+    external: true

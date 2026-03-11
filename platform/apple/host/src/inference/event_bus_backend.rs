@@ -4,6 +4,9 @@
 //! and receives results asynchronously. Uses frame pipelining for
 //! improved throughput - multiple frames are sent concurrently while
 //! maintaining bounded in-flight requests to prevent overload.
+//!
+//! Implements both the legacy `InferenceBackend` trait (for job-based processing)
+//! and the new unified `VlmBackend` trait (for single-image analysis).
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -17,6 +20,10 @@ use prost::Message;
 use tokio::sync::{mpsc, RwLock, Semaphore};
 use tokio::time::timeout;
 use tracing::{debug, error, info, warn};
+use yama_platform_traits::{
+    PlatformError, PlatformResult, VlmBackend, VlmCapabilities, VlmImageSource, VlmRequest,
+    VlmResponse,
+};
 
 use yama_container_sdk::EventBusClient;
 use yama_protocol::vlm::{ImageFormat, VlmAnalyzeProgress, VlmAnalyzeRequest, VlmAnalyzeResponse};
@@ -41,6 +48,10 @@ const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 const MAX_MISSED_HEALTH_CHECKS: u32 = 2;
 
 /// Backend that communicates with the VLM container via event bus.
+///
+/// Implements both:
+/// - `InferenceBackend` - Legacy trait for job-based video processing
+/// - `VlmBackend` - New unified trait for single-image analysis
 pub struct EventBusBackend {
     /// Event bus client for sending requests.
     client: Arc<RwLock<Option<EventBusClient>>>,
@@ -62,6 +73,8 @@ pub struct EventBusBackend {
     last_activity: Arc<RwLock<std::time::Instant>>,
     /// Handle to the health check task.
     health_check_handle: Arc<RwLock<Option<tokio::task::JoinHandle<()>>>>,
+    /// Backend capabilities (for VlmBackend trait).
+    capabilities: VlmCapabilities,
 }
 
 /// A pending inference request.
@@ -89,6 +102,8 @@ impl EventBusBackend {
         let is_connected = Arc::new(AtomicBool::new(false));
         let consecutive_failures = Arc::new(AtomicU32::new(0));
 
+        let capabilities = VlmCapabilities::event_bus("vlm-container");
+
         let backend = Self {
             client: Arc::new(RwLock::new(None)),
             extraction_config,
@@ -100,6 +115,7 @@ impl EventBusBackend {
             in_flight_semaphore: Arc::new(Semaphore::new(MAX_IN_FLIGHT_FRAMES)),
             last_activity: Arc::new(RwLock::new(std::time::Instant::now())),
             health_check_handle: Arc::new(RwLock::new(None)),
+            capabilities,
         };
 
         // Try initial connection (don't fail if container not running)
@@ -656,7 +672,7 @@ impl InferenceBackend for EventBusBackend {
         info!("Warming up VLM connection...");
 
         // Try to establish connection if not already connected
-        if !self.is_ready().await {
+        if !self.is_connected.load(Ordering::SeqCst) {
             if let Err(e) = self.connect_with_retry().await {
                 warn!("Warmup connection failed: {}", e);
                 return Err(e);
@@ -671,4 +687,139 @@ impl InferenceBackend for EventBusBackend {
 /// Create an event bus backend with default configuration.
 pub async fn create_event_bus_backend(config: &VlmInferenceConfig) -> Result<EventBusBackend> {
     EventBusBackend::new(config).await
+}
+
+// =============================================================================
+// VlmBackend trait implementation (new unified interface)
+// =============================================================================
+
+#[async_trait]
+impl VlmBackend for EventBusBackend {
+    fn capabilities(&self) -> &VlmCapabilities {
+        &self.capabilities
+    }
+
+    async fn analyze(&self, request: VlmRequest) -> PlatformResult<VlmResponse> {
+        let start = std::time::Instant::now();
+
+        // Convert image source to JPEG bytes
+        let (image_data, width, height) = match request.image {
+            VlmImageSource::Jpeg(data) => {
+                // Decode to get dimensions
+                let img = image::load_from_memory(&data)
+                    .map_err(|e| PlatformError::Other(format!("Failed to decode JPEG: {}", e)))?;
+                (data, img.width(), img.height())
+            }
+            VlmImageSource::Png(data) => {
+                // Convert PNG to JPEG
+                let img = image::load_from_memory(&data)
+                    .map_err(|e| PlatformError::Other(format!("Failed to decode PNG: {}", e)))?;
+                let mut jpeg_data = Vec::new();
+                let mut cursor = std::io::Cursor::new(&mut jpeg_data);
+                img.write_to(&mut cursor, image::ImageFormat::Jpeg)
+                    .map_err(|e| PlatformError::Other(format!("Failed to encode JPEG: {}", e)))?;
+                (jpeg_data, img.width(), img.height())
+            }
+            VlmImageSource::RawRgb { width, height, data } => {
+                // Convert RGB to JPEG
+                let img = image::RgbImage::from_raw(width, height, data)
+                    .ok_or_else(|| PlatformError::Other("Invalid RGB dimensions".to_string()))?;
+                let dynamic = image::DynamicImage::ImageRgb8(img);
+                let mut jpeg_data = Vec::new();
+                let mut cursor = std::io::Cursor::new(&mut jpeg_data);
+                dynamic.write_to(&mut cursor, image::ImageFormat::Jpeg)
+                    .map_err(|e| PlatformError::Other(format!("Failed to encode JPEG: {}", e)))?;
+                (jpeg_data, width, height)
+            }
+            VlmImageSource::RawRgba { width, height, data } => {
+                // Convert RGBA to JPEG
+                let img = image::RgbaImage::from_raw(width, height, data)
+                    .ok_or_else(|| PlatformError::Other("Invalid RGBA dimensions".to_string()))?;
+                let dynamic = image::DynamicImage::ImageRgba8(img);
+                let mut jpeg_data = Vec::new();
+                let mut cursor = std::io::Cursor::new(&mut jpeg_data);
+                dynamic.write_to(&mut cursor, image::ImageFormat::Jpeg)
+                    .map_err(|e| PlatformError::Other(format!("Failed to encode JPEG: {}", e)))?;
+                (jpeg_data, width, height)
+            }
+            VlmImageSource::Nv12 { .. } => {
+                return Err(PlatformError::Other(
+                    "NV12 format not supported by event bus backend - use JPEG".to_string(),
+                ));
+            }
+            VlmImageSource::SharedMemory { .. } => {
+                return Err(PlatformError::Other(
+                    "Shared memory not supported by event bus backend".to_string(),
+                ));
+            }
+        };
+
+        // Send request via event bus
+        let response = self
+            .analyze_frame(&request.request_id, &request.prompt, image_data, width, height)
+            .await
+            .map_err(|e| PlatformError::Other(format!("Event bus analyze failed: {}", e)))?;
+
+        let inference_time_ms = start.elapsed().as_secs_f32() * 1000.0;
+
+        Ok(VlmResponse {
+            request_id: response.request_id,
+            analysis: response.analysis,
+            inference_time_ms,
+            tokens_generated: response.tokens_generated,
+            model: "vlm-container".to_string(),
+        })
+    }
+
+    async fn is_ready(&self) -> bool {
+        // Check if we have an active connection
+        if !self.is_connected.load(Ordering::SeqCst) {
+            return false;
+        }
+
+        // Verify the client is still valid
+        let client_guard = self.client.read().await;
+        client_guard.is_some()
+    }
+
+    async fn warmup(&self) -> PlatformResult<()> {
+        info!("Warming up event bus VLM backend...");
+
+        // Try to establish connection if not already connected
+        if !self.is_connected.load(Ordering::SeqCst) {
+            self.connect_with_retry()
+                .await
+                .map_err(|e| PlatformError::Other(format!("Connection failed: {}", e)))?;
+        }
+
+        info!("Event bus VLM backend warmup complete");
+        Ok(())
+    }
+
+    fn name(&self) -> &'static str {
+        "event_bus"
+    }
+
+    async fn shutdown(&self) -> PlatformResult<()> {
+        info!("Shutting down event bus VLM backend");
+
+        // Cancel health check task
+        {
+            let mut handle_guard = self.health_check_handle.write().await;
+            if let Some(handle) = handle_guard.take() {
+                handle.abort();
+            }
+        }
+
+        // Clear pending requests
+        {
+            let mut pending_guard = self.pending.write().await;
+            pending_guard.clear();
+        }
+
+        // Mark as disconnected
+        self.is_connected.store(false, Ordering::SeqCst);
+
+        Ok(())
+    }
 }

@@ -2,6 +2,9 @@
 //!
 //! Loads the VLM model directly into the host process, bypassing
 //! all event bus complexity. Uses Metal MPS for GPU acceleration.
+//!
+//! Implements both the legacy `InferenceBackend` trait (for job-based processing)
+//! and the new unified `VlmBackend` trait (for single-image analysis).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -13,6 +16,10 @@ use image::DynamicImage;
 use mistralrs::{Device, IsqType, Model, TextMessageRole, VisionMessages, VisionModelBuilder};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, instrument, warn};
+use yama_platform_traits::{
+    PlatformError, PlatformResult, VlmBackend, VlmCapabilities, VlmImageSource, VlmPixelFormat,
+    VlmRequest, VlmResponse,
+};
 
 use super::backend::{InferenceBackend, update_job_progress, update_job_status};
 use super::frame_extractor::{ExtractionConfig, FrameExtractor};
@@ -50,6 +57,10 @@ impl Default for DirectVlmConfig {
 ///
 /// Loads mistral.rs directly into the host process for lowest-latency
 /// inference. Model is lazy-loaded on first inference request.
+///
+/// Implements both:
+/// - `InferenceBackend` - Legacy trait for job-based video processing
+/// - `VlmBackend` - New unified trait for single-image analysis
 pub struct DirectVlmBackend {
     /// The loaded model (lazy initialization).
     model: Arc<RwLock<Option<Model>>>,
@@ -59,11 +70,14 @@ pub struct DirectVlmBackend {
     extraction_config: ExtractionConfig,
     /// Whether model loading has been attempted.
     load_attempted: Arc<RwLock<bool>>,
+    /// Backend capabilities (for VlmBackend trait).
+    capabilities: VlmCapabilities,
 }
 
 impl DirectVlmBackend {
     /// Create a new direct VLM backend.
     pub fn new(config: &VlmInferenceConfig) -> Self {
+        let vlm_config = DirectVlmConfig::default();
         let extraction_config = ExtractionConfig {
             interval_ms: config.frame_interval_ms,
             max_frames: config.max_frames,
@@ -72,11 +86,14 @@ impl DirectVlmBackend {
             jpeg_quality: 85,
         };
 
+        let capabilities = VlmCapabilities::metal(&vlm_config.model_id);
+
         Self {
             model: Arc::new(RwLock::new(None)),
-            vlm_config: DirectVlmConfig::default(),
+            vlm_config,
             extraction_config,
             load_attempted: Arc::new(RwLock::new(false)),
+            capabilities,
         }
     }
 
@@ -90,11 +107,14 @@ impl DirectVlmBackend {
             jpeg_quality: 85,
         };
 
+        let capabilities = VlmCapabilities::metal(&vlm_config.model_id);
+
         Self {
             model: Arc::new(RwLock::new(None)),
             vlm_config,
             extraction_config,
             load_attempted: Arc::new(RwLock::new(false)),
+            capabilities,
         }
     }
 
@@ -392,6 +412,107 @@ impl InferenceBackend for DirectVlmBackend {
 /// Create a direct VLM backend.
 pub fn create_direct_backend(config: &VlmInferenceConfig) -> DirectVlmBackend {
     DirectVlmBackend::new(config)
+}
+
+// =============================================================================
+// VlmBackend trait implementation (new unified interface)
+// =============================================================================
+
+#[async_trait]
+impl VlmBackend for DirectVlmBackend {
+    fn capabilities(&self) -> &VlmCapabilities {
+        &self.capabilities
+    }
+
+    async fn analyze(&self, request: VlmRequest) -> PlatformResult<VlmResponse> {
+        let start = Instant::now();
+
+        // Convert image source to DynamicImage
+        let image = match request.image {
+            VlmImageSource::Jpeg(data) => {
+                image::load_from_memory_with_format(&data, image::ImageFormat::Jpeg)
+                    .map_err(|e| PlatformError::Other(format!("Failed to decode JPEG: {}", e)))?
+            }
+            VlmImageSource::Png(data) => {
+                image::load_from_memory_with_format(&data, image::ImageFormat::Png)
+                    .map_err(|e| PlatformError::Other(format!("Failed to decode PNG: {}", e)))?
+            }
+            VlmImageSource::RawRgb { width, height, data } => {
+                image::RgbImage::from_raw(width, height, data)
+                    .map(DynamicImage::ImageRgb8)
+                    .ok_or_else(|| PlatformError::Other("Invalid RGB image dimensions".to_string()))?
+            }
+            VlmImageSource::RawRgba { width, height, data } => {
+                image::RgbaImage::from_raw(width, height, data)
+                    .map(DynamicImage::ImageRgba8)
+                    .ok_or_else(|| PlatformError::Other("Invalid RGBA image dimensions".to_string()))?
+            }
+            VlmImageSource::Nv12 { .. } => {
+                return Err(PlatformError::Other(
+                    "NV12 format not supported by direct backend - use JPEG or RGB".to_string(),
+                ));
+            }
+            VlmImageSource::SharedMemory { .. } => {
+                return Err(PlatformError::Other(
+                    "Shared memory not supported by direct backend".to_string(),
+                ));
+            }
+        };
+
+        // Run inference
+        let analysis = self
+            .analyze_image(image, &request.prompt)
+            .await
+            .map_err(|e| PlatformError::Other(format!("Inference failed: {}", e)))?;
+
+        let inference_time_ms = start.elapsed().as_secs_f32() * 1000.0;
+
+        // Estimate token count from response length (rough approximation)
+        let tokens_generated = (analysis.len() / 4) as u32;
+
+        Ok(VlmResponse::new(
+            request.request_id,
+            analysis,
+            inference_time_ms,
+            tokens_generated,
+        )
+        .with_model(&self.vlm_config.model_id))
+    }
+
+    async fn is_ready(&self) -> bool {
+        let model_guard = self.model.read().await;
+        model_guard.is_some()
+    }
+
+    async fn warmup(&self) -> PlatformResult<()> {
+        info!("Warming up direct VLM backend (VlmBackend trait)...");
+
+        // Load the model
+        self.ensure_loaded()
+            .await
+            .map_err(|e| PlatformError::Other(format!("Failed to load model: {}", e)))?;
+
+        // Run a minimal inference to warm up GPU kernels
+        let test_image = DynamicImage::new_rgb8(64, 64);
+
+        if let Err(e) = self.analyze_image(test_image, "What is this?").await {
+            warn!("Warmup inference failed (non-fatal): {}", e);
+        }
+
+        info!("Direct VLM backend warmup complete");
+        Ok(())
+    }
+
+    fn name(&self) -> &'static str {
+        "direct"
+    }
+
+    async fn shutdown(&self) -> PlatformResult<()> {
+        info!("Shutting down direct VLM backend");
+        // Model will be dropped when the struct is dropped
+        // No explicit cleanup needed
+        Ok(())
+    }
 }
 
 #[cfg(test)]

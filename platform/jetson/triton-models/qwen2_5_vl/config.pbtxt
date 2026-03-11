@@ -1,0 +1,121 @@
+# Triton Model Configuration for Qwen2.5-VL
+#
+# This configuration defines the model inputs/outputs and runtime parameters
+# for serving Qwen2.5-VL through Triton Inference Server with TensorRT-LLM.
+#
+# Model: Qwen/Qwen2.5-VL-7B-Instruct (or 3B variant)
+# Backend: TensorRT-LLM
+# Platform: NVIDIA Jetson Orin
+#
+# Prerequisites:
+# 1. Build TensorRT-LLM engine for Qwen2.5-VL
+# 2. Place engine files in the 1/ subdirectory
+# 3. Configure system shared memory for large image inputs
+
+name: "qwen2_5_vl"
+platform: "tensorrt_llm"
+max_batch_size: 1
+
+# Input tensors
+input [
+  {
+    name: "image"
+    data_type: TYPE_UINT8
+    dims: [ 3, 448, 448 ]  # RGB image, 448x448 (model default)
+    optional: false
+  },
+  {
+    name: "prompt"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+    optional: false
+  },
+  {
+    name: "max_new_tokens"
+    data_type: TYPE_INT32
+    dims: [ 1 ]
+    optional: true
+    reshape: { shape: [ 1 ] }
+  },
+  {
+    name: "temperature"
+    data_type: TYPE_FP32
+    dims: [ 1 ]
+    optional: true
+  },
+  {
+    name: "top_p"
+    data_type: TYPE_FP32
+    dims: [ 1 ]
+    optional: true
+  }
+]
+
+# Output tensors
+output [
+  {
+    name: "output"
+    data_type: TYPE_STRING
+    dims: [ -1 ]  # Variable length output
+  },
+  {
+    name: "output_log_probs"
+    data_type: TYPE_FP32
+    dims: [ -1 ]
+    optional: true
+  }
+]
+
+# Instance configuration
+instance_group [
+  {
+    count: 1
+    kind: KIND_GPU
+    gpus: [ 0 ]
+  }
+]
+
+# Dynamic batching configuration
+dynamic_batching {
+  preferred_batch_size: [ 1 ]
+  max_queue_delay_microseconds: 100000  # 100ms max delay
+}
+
+# Model parameters
+parameters {
+  key: "gpt_model_type"
+  value: { string_value: "qwen2_vl" }
+}
+
+parameters {
+  key: "gpt_model_path"
+  value: { string_value: "/models/qwen2_5_vl/1" }
+}
+
+parameters {
+  key: "max_input_len"
+  value: { string_value: "2048" }
+}
+
+parameters {
+  key: "max_output_len"
+  value: { string_value: "512" }
+}
+
+parameters {
+  key: "beam_width"
+  value: { string_value: "1" }
+}
+
+parameters {
+  key: "enable_kv_cache_reuse"
+  value: { string_value: "true" }
+}
+
+# Response cache (for repeated queries)
+response_cache {
+  enable: true
+}
+
+# Version policy - use latest
+version_policy: { latest: { num_versions: 1 } }

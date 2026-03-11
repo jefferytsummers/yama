@@ -14,6 +14,7 @@ use tracing_subscriber::FmtSubscriber;
 
 mod compositor;
 mod event_bus;
+mod inference;
 mod orchestrator;
 
 use compositor::Compositor;

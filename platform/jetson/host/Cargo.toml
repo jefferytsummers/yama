@@ -37,6 +37,7 @@ eframe = { workspace = true }
 gstreamer = { workspace = true }
 gstreamer-app = { workspace = true }
 gstreamer-video = { workspace = true }
+gstreamer-pbutils = { workspace = true }
 
 # Container management
 bollard = { workspace = true }
@@ -47,6 +48,16 @@ bytes = { workspace = true }
 
 # Network
 tokio-tungstenite = { workspace = true }
+reqwest = { workspace = true }
+
+# Image processing
+image = { workspace = true }
+
+# Encoding
+base64 = "0.22"
+
+# Async utilities
+futures = { workspace = true }
 
 # Concurrency
 dashmap = { workspace = true }

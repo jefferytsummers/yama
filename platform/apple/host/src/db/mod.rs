@@ -132,6 +132,23 @@ impl Database {
             .await
             .context("Failed to run artifacts migration")?;
 
+        // Project config migration - add config column if it doesn't exist
+        // Check if column exists first
+        let has_config: bool = sqlx::query_scalar(
+            "SELECT COUNT(*) > 0 FROM pragma_table_info('projects') WHERE name = 'config'"
+        )
+        .fetch_one(&self.pool)
+        .await
+        .unwrap_or(false);
+
+        if !has_config {
+            sqlx::query("ALTER TABLE projects ADD COLUMN config TEXT")
+                .execute(&self.pool)
+                .await
+                .context("Failed to add config column to projects")?;
+            debug!("Added config column to projects table");
+        }
+
         debug!("Migrations complete");
         Ok(())
     }

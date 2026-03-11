@@ -33,6 +33,9 @@ pub struct CreateProjectRequest {
     /// Tags for the project (stored as JSON in description for now).
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Project configuration.
+    #[serde(default)]
+    pub config: Option<crate::db::models::ProjectConfig>,
 }
 
 /// Request to create a new library.
@@ -48,6 +51,7 @@ pub struct ProjectResponse {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
+    pub config: Option<crate::db::models::ProjectConfig>,
     pub created_at: String,
     pub updated_at: String,
     pub library_count: i64,
@@ -88,6 +92,7 @@ pub async fn list_projects_handler(
                     id: p.id,
                     name: p.name,
                     description: p.description,
+                    config: p.config,
                     created_at: p.created_at,
                     updated_at: p.updated_at,
                     library_count,
@@ -121,6 +126,7 @@ pub async fn get_project_handler(
                 id: p.id,
                 name: p.name,
                 description: p.description,
+                config: p.config,
                 created_at: p.created_at,
                 updated_at: p.updated_at,
                 library_count,
@@ -163,6 +169,7 @@ pub async fn create_project_handler(
         NewProject {
             name: req.name.clone(),
             description,
+            config: req.config.clone(),
         },
     )
     .await
@@ -173,6 +180,7 @@ pub async fn create_project_handler(
                 id: p.id,
                 name: p.name,
                 description: p.description,
+                config: p.config,
                 created_at: p.created_at,
                 updated_at: p.updated_at,
                 library_count: 0,

@@ -331,6 +331,14 @@ impl ChatHistory {
         .await
         .context("Failed to add chat message")?;
 
+        // Update session's updated_at timestamp
+        sqlx::query("UPDATE chat_sessions SET updated_at = ? WHERE id = ?")
+            .bind(now.to_rfc3339())
+            .bind(session_id)
+            .execute(&self.pool)
+            .await
+            .context("Failed to update session timestamp")?;
+
         Ok(ChatMessageRow {
             id,
             session_id: session_id.to_string(),

@@ -56,6 +56,7 @@ pub mod inference;
 pub mod platform;
 pub mod renderer;
 pub mod types;
+pub mod vlm;
 
 // Re-export main traits at crate root
 pub use allocator::{BufferUsage, GpuAllocator, GpuBuffer};
@@ -72,3 +73,7 @@ pub use inference::{InferenceEngine, InferenceRequest, InferenceResponse, ModelI
 pub use platform::{detect_platform, Platform, PlatformCapabilities, PlatformInfo};
 pub use renderer::{RenderSurface, Renderer, TextureFormat, TextureHandle};
 pub use types::*;
+pub use vlm::{
+    VlmBackend, VlmBatchRequest, VlmBatchResult, VlmCapabilities, VlmGenerationParams,
+    VlmImageSource, VlmPixelFormat, VlmRequest, VlmResponse,
+};

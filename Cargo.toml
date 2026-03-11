@@ -79,6 +79,7 @@ gstreamer = "0.23"
 gstreamer-app = "0.23"
 gstreamer-allocators = "0.23"
 gstreamer-video = "0.23"
+gstreamer-pbutils = "0.23"
 
 # Container management
 bollard = "0.18"
@@ -86,6 +87,9 @@ bollard = "0.18"
 # HTTP client (for LLM APIs)
 reqwest = { version = "0.12", features = ["json", "stream"] }
 async-stream = "0.3"
+
+# Streaming utilities
+tokio-stream = "0.1"
 
 # HTTP server (for Host UI)
 axum = "0.8"
@@ -95,9 +99,17 @@ tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
 # GUI
 egui = "0.29"
 eframe = "0.29"
+egui_dock = "0.14"
+
+# Async utilities
+futures = "0.3"
 
 # Graphics
 wgpu = "0.20"
+ash = "0.38"
+
+# Wayland compositor (Jetson)
+smithay = { version = "0.3", default-features = false, features = ["backend_drm"] }
 
 # Configuration
 toml = "0.8"

@@ -17,39 +17,47 @@ use super::models::*;
 pub async fn create_project(pool: &SqlitePool, input: NewProject) -> Result<Project> {
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
+    let config_json = input.config.as_ref().map(|c| serde_json::to_string(c).unwrap_or_default());
 
-    sqlx::query_as::<_, Project>(
+    let row = sqlx::query_as::<_, ProjectRow>(
         r#"
-        INSERT INTO projects (id, name, description, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO projects (id, name, description, config, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
         RETURNING *
         "#,
     )
     .bind(&id)
     .bind(&input.name)
     .bind(&input.description)
+    .bind(&config_json)
     .bind(&now)
     .bind(&now)
     .fetch_one(pool)
     .await
-    .context("Failed to create project")
+    .context("Failed to create project")?;
+
+    Ok(row.into_project())
 }
 
 /// Get a project by ID.
 pub async fn get_project(pool: &SqlitePool, id: &str) -> Result<Option<Project>> {
-    sqlx::query_as::<_, Project>("SELECT * FROM projects WHERE id = ?")
+    let row = sqlx::query_as::<_, ProjectRow>("SELECT * FROM projects WHERE id = ?")
         .bind(id)
         .fetch_optional(pool)
         .await
-        .context("Failed to get project")
+        .context("Failed to get project")?;
+
+    Ok(row.map(|r| r.into_project()))
 }
 
 /// List all projects.
 pub async fn list_projects(pool: &SqlitePool) -> Result<Vec<Project>> {
-    sqlx::query_as::<_, Project>("SELECT * FROM projects ORDER BY created_at DESC")
+    let rows = sqlx::query_as::<_, ProjectRow>("SELECT * FROM projects ORDER BY created_at DESC")
         .fetch_all(pool)
         .await
-        .context("Failed to list projects")
+        .context("Failed to list projects")?;
+
+    Ok(rows.into_iter().map(|r| r.into_project()).collect())
 }
 
 /// Update a project.
@@ -58,20 +66,25 @@ pub async fn update_project(
     id: &str,
     name: Option<&str>,
     description: Option<Option<&str>>,
+    config: Option<Option<&ProjectConfig>>,
 ) -> Result<Option<Project>> {
     let now = chrono::Utc::now().to_rfc3339();
 
     // Build update query dynamically
     let mut updates = vec!["updated_at = ?"];
-    let mut binds: Vec<String> = vec![now.clone()];
+    let mut binds: Vec<Option<String>> = vec![Some(now.clone())];
 
     if let Some(n) = name {
         updates.push("name = ?");
-        binds.push(n.to_string());
+        binds.push(Some(n.to_string()));
     }
     if let Some(d) = description {
         updates.push("description = ?");
-        binds.push(d.map(|s| s.to_string()).unwrap_or_default());
+        binds.push(d.map(|s| s.to_string()));
+    }
+    if let Some(c) = config {
+        updates.push("config = ?");
+        binds.push(c.map(|cfg| serde_json::to_string(cfg).unwrap_or_default()));
     }
 
     let query = format!(
@@ -79,15 +92,17 @@ pub async fn update_project(
         updates.join(", ")
     );
 
-    let mut q = sqlx::query_as::<_, Project>(&query);
+    let mut q = sqlx::query_as::<_, ProjectRow>(&query);
     for b in &binds {
         q = q.bind(b);
     }
     q = q.bind(id);
 
-    q.fetch_optional(pool)
+    let row = q.fetch_optional(pool)
         .await
-        .context("Failed to update project")
+        .context("Failed to update project")?;
+
+    Ok(row.map(|r| r.into_project()))
 }
 
 /// Delete a project (cascades to libraries, videos, etc.).

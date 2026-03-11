@@ -1,5 +1,6 @@
 //! Chat session management for agent conversations.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -10,6 +11,11 @@ use tracing::{debug, error, info, warn};
 
 use crate::db::chat_history::{ChatHistory, ChatMessageRow, ChatSessionRow, MessageRole, StoredToolCall};
 use crate::inference::VlmInferenceService;
+
+// Agent SDK imports for LLM interaction
+use yama_agent_sdk::context::{ContentBlock, ImageSource, Message, MessageContent, MessageRole as SdkMessageRole};
+use yama_agent_sdk::llm::{AnthropicBackend, LlmBackend, LlmConfig, LlmResponse};
+use yama_agent_sdk::tools::{ToolDefinition as SdkToolDefinition, ToolRegistry as SdkToolRegistry};
 
 use super::executor::ToolExecutor;
 use super::presets::{AgentPreset, PresetRegistry};
@@ -89,6 +95,28 @@ pub struct ChatSession {
     tool_context: ToolContext,
 }
 
+/// Simple wrapper tool for the SDK registry.
+/// The actual execution is handled by our ToolExecutor, not through this wrapper.
+struct SimpleToolWrapper {
+    definition: SdkToolDefinition,
+}
+
+impl yama_agent_sdk::tools::Tool for SimpleToolWrapper {
+    fn definition(&self) -> SdkToolDefinition {
+        self.definition.clone()
+    }
+
+    fn execute(
+        &self,
+        _input: Value,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = yama_agent_sdk::tools::ToolResult> + Send + '_>> {
+        // This is a placeholder - actual execution is done through ToolExecutor
+        Box::pin(async {
+            yama_agent_sdk::tools::ToolResult::error("Tool execution is handled externally")
+        })
+    }
+}
+
 impl ChatSession {
     /// Create a new chat session.
     pub async fn new(
@@ -99,8 +127,22 @@ impl ChatSession {
         tool_context: ToolContext,
         config: SessionConfig,
     ) -> Result<Self> {
+        Self::new_with_details(preset, history, vlm_service, executor, tool_context, config, None, None).await
+    }
+
+    /// Create a new chat session with project ID and title.
+    pub async fn new_with_details(
+        preset: AgentPreset,
+        history: Arc<ChatHistory>,
+        vlm_service: Arc<VlmInferenceService>,
+        executor: Arc<ToolExecutor>,
+        tool_context: ToolContext,
+        config: SessionConfig,
+        project_id: Option<&str>,
+        title: Option<&str>,
+    ) -> Result<Self> {
         let session_row = history
-            .create_session(&preset.id.as_str(), None, None)
+            .create_session(&preset.id.as_str(), project_id, title)
             .await
             .context("Failed to create session in database")?;
 
@@ -292,42 +334,209 @@ impl ChatSession {
             None
         };
 
-        // Call VLM service
-        debug!(message_count = messages.len(), "Calling VLM service");
+        // Get model configuration
+        let default_model = preset.model.preferred_model.clone().unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
+        let model = config.model_override.as_ref().unwrap_or(&default_model).clone();
 
-        // For now, we'll use a simple synchronous approach
-        // In a full implementation, this would stream tokens
-        let default_model = preset.model.preferred_model.clone().unwrap_or_else(|| "vlm-default".to_string());
-        let model = config.model_override.as_ref().unwrap_or(&default_model);
+        // Get API key from environment
+        let api_key = std::env::var("ANTHROPIC_API_KEY").ok();
 
-        // Build the inference request
-        let request_payload = serde_json::json!({
-            "model": model,
-            "messages": messages,
-            "tools": tools,
-            "temperature": preset.model.temperature,
-            "max_tokens": preset.model.max_tokens,
-        });
+        // Convert context messages to SDK format
+        let sdk_messages = Self::convert_to_sdk_messages(&context_messages, &preset.system_prompt);
 
-        // TODO: Replace with actual VLM service call
-        // For now, send a placeholder response
-        let response_content = format!(
-            "I received your message: '{}'. This is a placeholder response from the {} preset.",
-            content, preset.name
-        );
+        // Build SDK tool registry from executor definitions
+        let sdk_tools = Self::build_sdk_tools(&executor, &preset);
 
-        tx.send(ChatChunk::Text(response_content.clone())).await?;
+        // Create LLM backend
+        let llm_config = LlmConfig {
+            endpoint: String::new(), // Use default Anthropic endpoint
+            api_key,
+            model: model.clone(),
+            temperature: preset.model.temperature,
+            max_tokens: preset.model.max_tokens,
+            options: HashMap::new(),
+        };
 
-        // Store assistant response
-        if config.persist {
+        // If no API key, fall back to placeholder response
+        if llm_config.api_key.is_none() {
+            warn!("No ANTHROPIC_API_KEY set, using placeholder response");
+            let response_content = format!(
+                "I received your message: '{}'. Set ANTHROPIC_API_KEY to enable AI responses.",
+                content
+            );
+            tx.send(ChatChunk::Text(response_content.clone())).await?;
+
+            if config.persist {
+                history
+                    .add_message(
+                        &session_id,
+                        MessageRole::Assistant,
+                        &response_content,
+                        None,
+                        None,
+                        Some(&model),
+                        None,
+                    )
+                    .await
+                    .context("Failed to store assistant message")?;
+            }
+
+            tx.send(ChatChunk::Done { token_count: None }).await?;
+            return Ok(());
+        }
+
+        let backend = match AnthropicBackend::new(llm_config) {
+            Ok(b) => b,
+            Err(e) => {
+                error!("Failed to create Anthropic backend: {}", e);
+                tx.send(ChatChunk::Error(format!("Failed to initialize LLM: {}", e))).await?;
+                return Ok(());
+            }
+        };
+
+        // Agentic loop: continue until we get end_turn
+        let mut loop_messages = sdk_messages;
+        let mut accumulated_text = String::new();
+        let mut tool_uses: Vec<(String, String, Value)> = Vec::new();
+
+        'agentic_loop: loop {
+            debug!(message_count = loop_messages.len(), "Calling LLM");
+
+            // Call LLM
+            let mut response_rx = match backend.chat(&loop_messages, &sdk_tools).await {
+                Ok(rx) => rx,
+                Err(e) => {
+                    error!("LLM call failed: {}", e);
+                    tx.send(ChatChunk::Error(format!("LLM call failed: {}", e))).await?;
+                    break 'agentic_loop;
+                }
+            };
+
+            // Process streaming responses
+            let mut current_turn_text = String::new();
+            let mut current_turn_tools: Vec<(String, String, Value)> = Vec::new();
+            let mut stop_reason = String::new();
+
+            while let Some(response) = response_rx.recv().await {
+                match response {
+                    LlmResponse::TextDelta { text } => {
+                        current_turn_text.push_str(&text);
+                        accumulated_text.push_str(&text);
+                        tx.send(ChatChunk::Text(text)).await?;
+                    }
+                    LlmResponse::ToolUse { id, name, input } => {
+                        info!(tool = %name, id = %id, "Tool use requested");
+                        tx.send(ChatChunk::ToolCall {
+                            id: id.clone(),
+                            name: name.clone(),
+                            arguments: input.clone(),
+                        }).await?;
+                        current_turn_tools.push((id, name, input));
+                    }
+                    LlmResponse::Complete { stop_reason: reason } => {
+                        debug!(stop_reason = %reason, "LLM response complete");
+                        stop_reason = reason;
+                    }
+                    LlmResponse::Error { message } => {
+                        error!("LLM error: {}", message);
+                        tx.send(ChatChunk::Error(message)).await?;
+                        break 'agentic_loop;
+                    }
+                }
+            }
+
+            // If there were tool uses, execute them and continue the loop
+            if !current_turn_tools.is_empty() {
+                // Add assistant message with tool uses to context
+                let assistant_blocks = Self::build_assistant_blocks(&current_turn_text, &current_turn_tools);
+                loop_messages.push(Message {
+                    role: SdkMessageRole::Assistant,
+                    content: MessageContent::Structured(assistant_blocks),
+                    token_count: 0,
+                });
+
+                // Execute tools and add results
+                let mut tool_results = Vec::new();
+                for (tool_id, tool_name, tool_input) in &current_turn_tools {
+                    // Execute the tool
+                    let result = executor
+                        .execute_with_session(&tool_name, tool_input.clone(), tool_context.clone(), Some(session_id.clone()))
+                        .await;
+
+                    let (content, is_error) = match result {
+                        Ok(r) => {
+                            let success = r.success;
+                            let content = if r.success {
+                                serde_json::to_string(&r.data).unwrap_or_default()
+                            } else {
+                                r.error.unwrap_or_default()
+                            };
+                            tx.send(ChatChunk::ToolResult {
+                                tool_call_id: tool_id.clone(),
+                                success,
+                                content: content.clone(),
+                            }).await?;
+                            (content, !success)
+                        }
+                        Err(e) => {
+                            let error_msg = e.to_string();
+                            tx.send(ChatChunk::ToolResult {
+                                tool_call_id: tool_id.clone(),
+                                success: false,
+                                content: error_msg.clone(),
+                            }).await?;
+                            (error_msg, true)
+                        }
+                    };
+
+                    tool_results.push(ContentBlock::ToolResult {
+                        tool_use_id: tool_id.clone(),
+                        content,
+                        is_error,
+                    });
+                }
+
+                // Add tool results as a user message (Anthropic API requires this)
+                loop_messages.push(Message {
+                    role: SdkMessageRole::Tool,
+                    content: MessageContent::Structured(tool_results),
+                    token_count: 0,
+                });
+
+                // Store tool uses for persistence
+                let had_tools = !current_turn_tools.is_empty();
+                tool_uses.extend(current_turn_tools);
+
+                // Continue the agentic loop if stop_reason is "tool_use"
+                if stop_reason == "tool_use" && had_tools {
+                    continue 'agentic_loop;
+                }
+            }
+
+            // End turn - we're done
+            break 'agentic_loop;
+        }
+
+        // Store final assistant response
+        if config.persist && !accumulated_text.is_empty() {
+            let stored_tool_calls: Option<Vec<StoredToolCall>> = if tool_uses.is_empty() {
+                None
+            } else {
+                Some(tool_uses.iter().map(|(id, name, args)| StoredToolCall {
+                    id: id.clone(),
+                    name: name.clone(),
+                    arguments: args.clone(),
+                }).collect())
+            };
+
             history
                 .add_message(
                     &session_id,
                     MessageRole::Assistant,
-                    &response_content,
+                    &accumulated_text,
+                    stored_tool_calls.as_deref(),
                     None,
-                    None,
-                    Some(model),
+                    Some(&model),
                     None,
                 )
                 .await
@@ -366,6 +575,113 @@ impl ChatSession {
                 format!("{}...", truncated)
             }
         }
+    }
+
+    /// Convert database message rows to SDK message format.
+    fn convert_to_sdk_messages(messages: &[ChatMessageRow], system_prompt: &str) -> Vec<Message> {
+        let mut sdk_messages = Vec::with_capacity(messages.len() + 1);
+
+        // Add system prompt first
+        if !system_prompt.is_empty() {
+            sdk_messages.push(Message {
+                role: SdkMessageRole::System,
+                content: MessageContent::Text(system_prompt.to_string()),
+                token_count: (system_prompt.len() / 4) as u32,
+            });
+        }
+
+        // Convert each message
+        for msg in messages {
+            let role = match msg.role {
+                MessageRole::User => SdkMessageRole::User,
+                MessageRole::Assistant => SdkMessageRole::Assistant,
+                MessageRole::System => SdkMessageRole::System,
+                MessageRole::Tool => SdkMessageRole::Tool,
+            };
+
+            // Build content
+            let content = if let Some(ref tool_calls) = msg.tool_calls {
+                // Assistant message with tool calls
+                let mut blocks = Vec::new();
+                if !msg.content.is_empty() {
+                    blocks.push(ContentBlock::Text {
+                        text: msg.content.clone(),
+                    });
+                }
+                for tc in tool_calls {
+                    blocks.push(ContentBlock::ToolUse {
+                        id: tc.id.clone(),
+                        name: tc.name.clone(),
+                        input: tc.arguments.clone(),
+                    });
+                }
+                MessageContent::Structured(blocks)
+            } else if let Some(ref tool_call_id) = msg.tool_call_id {
+                // Tool result message
+                MessageContent::Structured(vec![ContentBlock::ToolResult {
+                    tool_use_id: tool_call_id.clone(),
+                    content: msg.content.clone(),
+                    is_error: false,
+                }])
+            } else {
+                // Regular text message
+                MessageContent::Text(msg.content.clone())
+            };
+
+            sdk_messages.push(Message {
+                role,
+                content,
+                token_count: (msg.content.len() / 4) as u32,
+            });
+        }
+
+        sdk_messages
+    }
+
+    /// Build SDK tool registry from executor definitions.
+    fn build_sdk_tools(executor: &ToolExecutor, preset: &AgentPreset) -> SdkToolRegistry {
+        let mut registry = SdkToolRegistry::new();
+
+        for tool_config in &preset.tools {
+            if !tool_config.enabled {
+                continue;
+            }
+
+            if let Some(def) = executor.get_tool_definition(&tool_config.name) {
+                // Convert to SDK tool definition format
+                let sdk_def = SdkToolDefinition {
+                    name: def.name.clone(),
+                    description: def.description.clone(),
+                    input_schema: def.to_json_schema()["function"]["parameters"].clone(),
+                };
+
+                // Create a simple wrapper tool
+                registry.register(SimpleToolWrapper { definition: sdk_def });
+            }
+        }
+
+        registry
+    }
+
+    /// Build assistant content blocks from text and tool uses.
+    fn build_assistant_blocks(text: &str, tool_uses: &[(String, String, Value)]) -> Vec<ContentBlock> {
+        let mut blocks = Vec::new();
+
+        if !text.is_empty() {
+            blocks.push(ContentBlock::Text {
+                text: text.to_string(),
+            });
+        }
+
+        for (id, name, input) in tool_uses {
+            blocks.push(ContentBlock::ToolUse {
+                id: id.clone(),
+                name: name.clone(),
+                input: input.clone(),
+            });
+        }
+
+        blocks
     }
 
     /// Execute a tool and return the result.

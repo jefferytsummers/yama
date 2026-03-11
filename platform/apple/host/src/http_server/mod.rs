@@ -21,6 +21,7 @@ use tracing::info;
 use crate::ServiceState;
 
 mod handlers;
+pub mod chat_handlers;
 pub mod inference_handlers;
 mod project_handlers;
 mod routes;

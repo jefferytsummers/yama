@@ -36,6 +36,7 @@ use axum::Router;
 
 use crate::ServiceState;
 
+use super::chat_handlers;
 use super::handlers;
 use super::inference_handlers;
 use super::project_handlers;
@@ -43,10 +44,11 @@ use super::project_handlers;
 /// Build the complete API router with all endpoints.
 ///
 /// This combines admin routes (for web dashboard), project routes (for project management),
-/// and inference API routes (for external tools/scripts).
+/// chat routes (for chat sessions), and inference API routes (for external tools/scripts).
 pub fn api_routes(state: Arc<ServiceState>) -> Router {
     admin_routes(state.clone())
         .merge(project_routes(state.clone()))
+        .merge(chat_api_routes(state.clone()))
         .merge(inference_api_routes(state))
 }
 
@@ -103,6 +105,34 @@ pub fn project_routes(state: Arc<ServiceState>) -> Router {
             "/projects/{id}/libraries",
             post(project_handlers::create_library_handler),
         )
+        .with_state(state)
+}
+
+/// Chat API routes for chat sessions with agents.
+///
+/// These endpoints provide chat functionality with streaming responses:
+/// - `/chat/sessions` - Create/list chat sessions
+/// - `/chat/sessions/:id` - Get/delete specific session
+/// - `/chat/sessions/:id/messages` - Get/send messages (SSE streaming)
+/// - `/chat/presets` - List available agent presets
+pub fn chat_api_routes(state: Arc<ServiceState>) -> Router {
+    Router::new()
+        // Sessions
+        .route("/chat/sessions", get(chat_handlers::list_sessions))
+        .route("/chat/sessions", post(chat_handlers::create_session))
+        .route("/chat/sessions/{id}", get(chat_handlers::get_session))
+        .route("/chat/sessions/{id}", delete(chat_handlers::delete_session))
+        // Messages
+        .route(
+            "/chat/sessions/{id}/messages",
+            get(chat_handlers::get_messages),
+        )
+        .route(
+            "/chat/sessions/{id}/messages",
+            post(chat_handlers::send_message),
+        )
+        // Presets
+        .route("/chat/presets", get(chat_handlers::list_presets))
         .with_state(state)
 }
 
