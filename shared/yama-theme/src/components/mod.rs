@@ -9,9 +9,11 @@ mod badge;
 mod button;
 mod card;
 mod chat_bubble;
+mod config_card;
 mod detection_overlay;
 mod progress;
 mod status;
+mod toggle_switch;
 mod video_grid;
 
 pub use alert_timeline::{alert_timeline, AlertTimeline, EventSeverity, TimelineAction, TimelineEvent};
@@ -26,6 +28,8 @@ pub use detection_overlay::{
 };
 pub use progress::{progress_bar, ProgressBar};
 pub use status::{status_indicator, Status, StatusIndicator};
+pub use config_card::{config_card, ConfigCard, ConfigCardResponse};
+pub use toggle_switch::{toggle_switch, toggle_switch_with_label, ToggleSwitch, ToggleSwitchSize};
 pub use video_grid::{
     video_grid, GridLayout, StreamStatus, VideoGrid, VideoGridAction, VideoSourceInfo,
 };

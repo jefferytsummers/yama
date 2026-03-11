@@ -15,6 +15,7 @@ use crate::ui::analyst::{
     Project, ProjectManager,
     QueryAction, QueryPanel, QueryPanelState,
     SearchAction, SearchBar, SearchResults,
+    ConfigPanel, ConfigPanelAction, ConfigPanelState, ProjectConfig,
 };
 use crate::ui::chat::{ChatInput, ChatInputAction, ConversationThread};
 use crate::ui::{
@@ -68,6 +69,10 @@ pub struct YamaApp {
     indexing_progress: Option<IndexingProgress>,
     /// Whether to show model settings panel
     show_settings: bool,
+    /// Configuration panel state
+    config_panel_state: ConfigPanelState,
+    /// Project configuration (tools, models, workflows)
+    project_config: ProjectConfig,
 }
 
 /// Legacy alias for backwards compatibility.
@@ -98,6 +103,8 @@ impl YamaApp {
             library_modal_selection: std::collections::HashSet::new(),
             indexing_progress: None,
             show_settings: false,
+            config_panel_state: ConfigPanelState::default(),
+            project_config: ProjectConfig::default(),
         }
     }
 
@@ -382,16 +389,39 @@ impl eframe::App for YamaApp {
                     );
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Settings button
+                        // Settings button - different behavior based on mode
+                        let settings_active = match self.view_mode {
+                            ViewMode::Chat => self.show_settings,
+                            ViewMode::Analyst => self.config_panel_state.open,
+                        };
+                        let settings_color = if settings_active { colors::AMBER } else { colors::SILVER };
+
                         if ui
                             .add(
-                                egui::Button::new(egui::RichText::new("⚙").color(colors::SILVER))
+                                egui::Button::new(egui::RichText::new("⚙").color(settings_color))
                                     .fill(colors::GRAPHITE)
                                     .rounding(radius::SM),
                             )
+                            .on_hover_text(if self.view_mode == ViewMode::Analyst && !self.project_manager.is_dashboard() {
+                                "Project Settings"
+                            } else {
+                                "Settings"
+                            })
                             .clicked()
                         {
-                            self.show_settings = !self.show_settings;
+                            match self.view_mode {
+                                ViewMode::Chat => {
+                                    self.show_settings = !self.show_settings;
+                                }
+                                ViewMode::Analyst => {
+                                    // Only toggle config panel when in a project
+                                    if !self.project_manager.is_dashboard() {
+                                        self.config_panel_state.toggle();
+                                    } else {
+                                        self.show_settings = !self.show_settings;
+                                    }
+                                }
+                            }
                         }
 
                         ui.add_space(spacing::S2);
@@ -700,7 +730,7 @@ impl YamaApp {
             });
     }
 
-    /// Show a project view (query panel + library modal).
+    /// Show a project view (query panel + library modal + config panel).
     fn show_project_view(&mut self, ctx: &egui::Context) {
         // Check for dropped files
         let dropped_files: Vec<PathBuf> = ctx.input(|i| {
@@ -718,6 +748,39 @@ impl YamaApp {
         // Show library modal if open
         if self.library_modal_open {
             self.show_library_modal(ctx);
+        }
+
+        // Show config panel if open (rendered before central panel for proper layering)
+        if self.config_panel_state.open || self.config_panel_state.animation_progress > 0.01 {
+            // Create a temporary mutable UI to show the config panel
+            // We need to show this as a side panel, which requires egui::Context
+            let panel_action = {
+                let mut dummy_ui_rect = egui::Rect::NOTHING;
+                egui::Area::new(egui::Id::new("config_panel_area"))
+                    .fixed_pos(egui::pos2(0.0, 0.0))
+                    .show(ctx, |ui| {
+                        dummy_ui_rect = ui.available_rect_before_wrap();
+                        ConfigPanel::new(&mut self.config_panel_state, &mut self.project_config)
+                            .show(ctx, ui)
+                    })
+                    .inner
+            };
+
+            match panel_action {
+                ConfigPanelAction::Close => {
+                    self.config_panel_state.open = false;
+                }
+                ConfigPanelAction::ToolsChanged => {
+                    info!("Tools configuration changed");
+                }
+                ConfigPanelAction::ModelsChanged => {
+                    info!("Models configuration changed");
+                }
+                ConfigPanelAction::WorkflowsChanged => {
+                    info!("Workflows configuration changed");
+                }
+                ConfigPanelAction::None => {}
+            }
         }
 
         // Main project view

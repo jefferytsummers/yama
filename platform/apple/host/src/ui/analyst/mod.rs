@@ -6,20 +6,28 @@
 //! - Search results with thumbnails
 //! - Video preview panel
 //! - Clip extraction dialog
+//! - Project configuration panel
 
+pub mod config_panel;
 pub mod dashboard;
 pub mod library;
 pub mod library_modal;
 pub mod project;
 pub mod query_panel;
 pub mod search;
+pub mod tool_card;
 
+pub use config_panel::{
+    ConfigPanel, ConfigPanelAction, ConfigPanelState, ModelConfig, ModelType, ProjectConfig,
+    WorkflowConfig,
+};
 pub use dashboard::{Dashboard, DashboardAction, DashboardState};
 pub use library::{LibraryAction, LibraryView};
 pub use library_modal::{LibraryModal, LibraryModalAction};
 pub use project::{Project, ProjectManager};
 pub use query_panel::{QueryAction, QueryExchange, QueryPanel, QueryPanelState, ToolCall, ToolResult};
 pub use search::{SearchAction, SearchBar, SearchResults};
+pub use tool_card::{ToolCard, ToolCardResponse, ToolCategory, ToolConfig};
 
 use std::collections::HashSet;
 use std::path::PathBuf;

@@ -461,6 +461,9 @@ impl RichTextExt for egui::RichText {
 pub use components::{
     // Existing components
     Badge, BadgeVariant, Card, ProgressBar, StatusIndicator,
+    // Configuration components
+    config_card, toggle_switch, toggle_switch_with_label,
+    ConfigCard, ConfigCardResponse, ToggleSwitch, ToggleSwitchSize,
     // Video analytics components
     AlertTimeline, Detection, DetectionClass, DetectionOverlay, EventSeverity, GridLayout,
     StreamStatus, TimelineAction, TimelineEvent, VideoGrid, VideoGridAction, VideoSourceInfo,
