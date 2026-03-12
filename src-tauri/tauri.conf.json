@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.yama.app",
   "build": {
-    "beforeBuildCommand": "cd web && npm run build",
-    "beforeDevCommand": "cd web && npm run dev",
+    "beforeBuildCommand": "cd ../web && npm run build",
+    "beforeDevCommand": "cd ../web && npm run dev",
     "frontendDist": "../web/build",
     "devUrl": "http://localhost:5173"
   },

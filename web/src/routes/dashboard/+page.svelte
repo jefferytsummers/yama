@@ -1,7 +1,16 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { Button, Card, Badge } from '$lib/components';
+	import { onMount } from 'svelte';
+	import { Button, Card, Badge, Modal, ProjectWizard } from '$lib/components';
 	import { auth, isAuthenticated, currentUser } from '$lib/stores';
+	import { projectsApi, type Project } from '$lib/api/projects';
+	import type { ProjectData } from '$lib/types';
+
+	// State
+	let projects = $state<Project[]>([]);
+	let loading = $state(true);
+	let error = $state<string | null>(null);
+	let showWizard = $state(false);
 
 	// Redirect unauthenticated users
 	$effect(() => {
@@ -10,15 +19,50 @@
 		}
 	});
 
+	onMount(async () => {
+		await loadProjects();
+	});
+
+	async function loadProjects() {
+		loading = true;
+		error = null;
+		try {
+			projects = await projectsApi.list();
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load projects';
+		} finally {
+			loading = false;
+		}
+	}
+
 	function handleLogout() {
 		auth.logout();
 		goto('/');
 	}
 
 	function handleNewProject() {
-		// In the desktop app context, this would open the project wizard inline
-		// For now, redirect to onboarding (which uses the same wizard)
-		goto('/onboarding');
+		showWizard = true;
+	}
+
+	async function handleWizardComplete(data: ProjectData) {
+		try {
+			const project = await projectsApi.create({
+				name: data.name,
+				description: data.description || undefined,
+				tags: data.tags
+			});
+			showWizard = false;
+			goto(`/dashboard/projects/${project.id}`);
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to create project';
+		}
+	}
+
+	function formatDate(dateStr: string): string {
+		return new Date(dateStr).toLocaleDateString('en-US', {
+			month: 'short',
+			day: 'numeric'
+		});
 	}
 </script>
 
@@ -49,42 +93,109 @@
 
 	<main class="dashboard-content">
 		<div class="welcome-section">
-			<h1>Welcome back{$currentUser?.name ? `, ${$currentUser.name}` : ''}!</h1>
-			<p>This is a preview of your Yama dashboard. Download the desktop app to start analyzing videos.</p>
+			<div class="welcome-text">
+				<h1>Welcome back{$currentUser?.name ? `, ${$currentUser.name}` : ''}!</h1>
+				<p>Manage your video analysis projects.</p>
+			</div>
+			<Button variant="primary" onclick={handleNewProject}>
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<path d="M12 5v14M5 12h14" />
+				</svg>
+				New Project
+			</Button>
 		</div>
 
-		<div class="empty-state">
+		{#if loading}
+			<div class="loading">
+				<div class="spinner"></div>
+				<p>Loading projects...</p>
+			</div>
+		{:else if error}
 			<Card>
-				<div class="empty-content">
-					<div class="empty-icon">
-						<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-							<rect x="3" y="3" width="18" height="18" rx="2" />
-							<path d="M12 8v8M8 12h8" />
-						</svg>
-					</div>
-					<h2>No projects yet</h2>
-					<p>Create your first project to start analyzing videos with AI.</p>
-					<Button variant="primary" onclick={handleNewProject}>
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<path d="M12 5v14M5 12h14" />
-						</svg>
-						New Project
+				<div class="error-state">
+					<p>{error}</p>
+					<Button variant="secondary" onclick={loadProjects}>
+						Try Again
 					</Button>
 				</div>
 			</Card>
-		</div>
+		{:else if projects.length === 0}
+			<div class="empty-state">
+				<Card>
+					<div class="empty-content">
+						<div class="empty-icon">
+							<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+								<rect x="3" y="3" width="18" height="18" rx="2" />
+								<path d="M12 8v8M8 12h8" />
+							</svg>
+						</div>
+						<h2>No projects yet</h2>
+						<p>Create your first project to start analyzing videos with AI.</p>
+						<Button variant="primary" onclick={handleNewProject}>
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<path d="M12 5v14M5 12h14" />
+							</svg>
+							New Project
+						</Button>
+					</div>
+				</Card>
+			</div>
+		{:else}
+			<div class="projects-grid">
+				{#each projects as project}
+					<a href="/dashboard/projects/{project.id}" class="project-card">
+						<Card interactive>
+							<div class="project-content">
+								<div class="project-header">
+									<h3>{project.name}</h3>
+									<Badge variant="neutral">{project.library_count} libraries</Badge>
+								</div>
+								{#if project.description}
+									<p class="project-description">{project.description}</p>
+								{/if}
+								<div class="project-footer">
+									<span class="project-date">
+										<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+											<rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+											<line x1="16" y1="2" x2="16" y2="6" />
+											<line x1="8" y1="2" x2="8" y2="6" />
+											<line x1="3" y1="10" x2="21" y2="10" />
+										</svg>
+										{formatDate(project.created_at)}
+									</span>
+									<span class="view-link">
+										View
+										<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+											<path d="M5 12h14M12 5l7 7-7 7" />
+										</svg>
+									</span>
+								</div>
+							</div>
+						</Card>
+					</a>
+				{/each}
+			</div>
+		{/if}
 
 		<div class="status-section">
 			<Card padding="sm">
 				<div class="status-row">
 					<Badge variant="success" glow pulse>VLM Ready</Badge>
-					<Badge variant="neutral">0 Projects</Badge>
-					<Badge variant="neutral">0 Videos</Badge>
+					<Badge variant="neutral">{projects.length} Projects</Badge>
 				</div>
 			</Card>
 		</div>
 	</main>
 </div>
+
+<!-- Project Wizard Modal -->
+<Modal bind:open={showWizard} onclose={() => showWizard = false} title="Create New Project" width="800px">
+	<ProjectWizard
+		context="app"
+		onComplete={handleWizardComplete}
+		onCancel={() => showWizard = false}
+	/>
+</Modal>
 
 <style>
 	.dashboard {
@@ -139,19 +250,59 @@
 	}
 
 	.welcome-section {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
 		margin-bottom: var(--space-8);
 	}
 
-	.welcome-section h1 {
+	.welcome-text h1 {
 		font-size: var(--text-h1);
 		font-weight: 600;
 		color: var(--color-chalk);
 		margin: 0 0 var(--space-2);
 	}
 
-	.welcome-section p {
+	.welcome-text p {
 		font-size: var(--text-body);
 		color: var(--color-silver);
+		margin: 0;
+	}
+
+	.loading {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-4);
+		padding: var(--space-12);
+		color: var(--color-silver);
+	}
+
+	.spinner {
+		width: 32px;
+		height: 32px;
+		border: 3px solid var(--color-stone);
+		border-top-color: var(--color-amber);
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
+	}
+
+	.error-state {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-4);
+		padding: var(--space-6);
+		text-align: center;
+	}
+
+	.error-state p {
+		color: var(--color-ember);
 		margin: 0;
 	}
 
@@ -186,6 +337,75 @@
 		max-width: 400px;
 	}
 
+	.projects-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+		gap: var(--space-4);
+		margin-bottom: var(--space-8);
+	}
+
+	.project-card {
+		text-decoration: none;
+		color: inherit;
+		display: block;
+	}
+
+	.project-content {
+		padding: var(--space-4);
+	}
+
+	.project-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		margin-bottom: var(--space-2);
+	}
+
+	.project-header h3 {
+		font-size: var(--text-h3);
+		font-weight: 600;
+		color: var(--color-chalk);
+		margin: 0;
+	}
+
+	.project-description {
+		font-size: var(--text-small);
+		color: var(--color-silver);
+		margin: 0 0 var(--space-4);
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	.project-footer {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.project-date {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		font-size: var(--text-small);
+		color: var(--color-ash);
+	}
+
+	.view-link {
+		display: flex;
+		align-items: center;
+		gap: var(--space-1);
+		font-size: var(--text-small);
+		color: var(--color-amber);
+		opacity: 0;
+		transition: opacity var(--duration-fast);
+	}
+
+	.project-card:hover .view-link {
+		opacity: 1;
+	}
+
 	.status-section {
 		position: fixed;
 		bottom: var(--space-6);
@@ -202,6 +422,12 @@
 	@media (max-width: 640px) {
 		.dashboard-content {
 			padding: var(--space-4);
+		}
+
+		.welcome-section {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: var(--space-4);
 		}
 
 		.user-email {

@@ -38,3 +38,6 @@ export { default as ToolToggle } from './ToolToggle.svelte';
 export { default as ModelChip } from './ModelChip.svelte';
 export { default as PresetCard } from './PresetCard.svelte';
 export { default as ProjectWizard } from './ProjectWizard.svelte';
+
+// Settings Components
+export { default as SettingsPanel } from './SettingsPanel.svelte';

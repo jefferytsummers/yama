@@ -39,6 +39,20 @@ export const apiClient = {
 		return response.json();
 	},
 
+	async put<T>(path: string, body?: unknown): Promise<T> {
+		const response = await fetch(`${this.baseUrl}${path}`, {
+			method: 'PUT',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: body ? JSON.stringify(body) : undefined
+		});
+		if (!response.ok) {
+			throw new Error(`API error: ${response.status}`);
+		}
+		return response.json();
+	},
+
 	async delete(path: string): Promise<void> {
 		const response = await fetch(`${this.baseUrl}${path}`, {
 			method: 'DELETE'

@@ -5,6 +5,12 @@
 
 import { apiClient } from './client';
 
+export interface ProjectConfig {
+	enabled_tools: string[];
+	default_model?: string;
+	default_preset_id?: string;
+}
+
 export interface Project {
 	id: string;
 	name: string;
@@ -12,6 +18,7 @@ export interface Project {
 	created_at: string;
 	updated_at: string;
 	library_count: number;
+	config?: ProjectConfig;
 }
 
 export interface Library {
@@ -76,6 +83,13 @@ export const projectsApi = {
 	 */
 	async createLibrary(projectId: string, data: CreateLibraryRequest): Promise<Library> {
 		return apiClient.post<Library>(`/api/projects/${projectId}/libraries`, data);
+	},
+
+	/**
+	 * Update project configuration (tools, models, workflows)
+	 */
+	async updateConfig(projectId: string, config: ProjectConfig): Promise<Project> {
+		return apiClient.put<Project>(`/api/projects/${projectId}/config`, { config });
 	}
 };
 
