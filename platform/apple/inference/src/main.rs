@@ -16,6 +16,7 @@ use tracing_subscriber::FmtSubscriber;
 
 use yama_container_sdk::{EventBusClient, HealthReporter};
 use yama_platform_traits::inference::InferenceEngine;
+use yama_protocol::vlm::VlmAnalyzeResponse;
 
 mod engine;
 
@@ -66,19 +67,7 @@ struct Message {
     content: String,
 }
 
-/// Inference response chunk.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct InferenceResponseMessage {
-    request_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    text: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    done: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    inference_time_us: Option<u64>,
-}
+// InferenceResponseMessage is now replaced by yama_protocol::vlm::VlmAnalyzeResponse
 
 /// Inference service using platform traits.
 struct InferenceService {
@@ -179,12 +168,14 @@ impl InferenceService {
             let active = *self.active_requests.read().await;
             if active >= self.max_concurrent {
                 warn!("Max concurrent requests reached");
-                let response = InferenceResponseMessage {
+                let response = VlmAnalyzeResponse {
                     request_id: request.request_id,
-                    text: None,
-                    done: Some(true),
-                    error: Some("Server at capacity".to_string()),
-                    inference_time_us: None,
+                    analysis: String::new(),
+                    inference_time_ms: 0.0,
+                    tokens_generated: 0,
+                    detections: vec![],
+                    error: "Server at capacity".to_string(),
+                    completed_at: None,
                 };
                 self.event_bus
                     .publish("inference.response", response)
@@ -225,14 +216,20 @@ impl InferenceService {
                 let text = response
                     .outputs
                     .first()
-                    .map(|t| String::from_utf8_lossy(&t.data).to_string());
+                    .map(|t| String::from_utf8_lossy(&t.data).to_string())
+                    .unwrap_or_default();
 
-                let msg = InferenceResponseMessage {
+                // Convert microseconds to milliseconds
+                let inference_time_ms = response.inference_time_us as f32 / 1000.0;
+
+                let msg = VlmAnalyzeResponse {
                     request_id,
-                    text,
-                    done: Some(true),
-                    error: None,
-                    inference_time_us: Some(response.inference_time_us),
+                    analysis: text,
+                    inference_time_ms,
+                    tokens_generated: 0, // Not tracked in platform response
+                    detections: vec![],
+                    error: String::new(),
+                    completed_at: None,
                 };
 
                 self.event_bus
@@ -241,12 +238,14 @@ impl InferenceService {
             }
             Err(e) => {
                 error!("Inference error: {}", e);
-                let msg = InferenceResponseMessage {
+                let msg = VlmAnalyzeResponse {
                     request_id,
-                    text: None,
-                    done: Some(true),
-                    error: Some(e.to_string()),
-                    inference_time_us: None,
+                    analysis: String::new(),
+                    inference_time_ms: 0.0,
+                    tokens_generated: 0,
+                    detections: vec![],
+                    error: e.to_string(),
+                    completed_at: None,
                 };
 
                 self.event_bus

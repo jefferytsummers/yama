@@ -5,10 +5,11 @@ edition = "2024"
 license.workspace = true
 description = "Yama host compositor for Apple Silicon (Metal/MoltenVK)"
 
-[[bin]]
-name = "yama"
-path = "src/main.rs"
-required-features = ["gui"]
+# GUI binary archived - use Tauri app instead
+# [[bin]]
+# name = "yama"
+# path = "src/main.rs"
+# required-features = ["gui"]
 
 [[bin]]
 name = "yama-headless"
@@ -24,7 +25,7 @@ yama-protocol = { path = "../../../shared/protocol" }
 yama-platform-traits = { workspace = true }
 yama-agent-sdk = { path = "../../../shared/agent-sdk" }
 yama-container-sdk = { path = "../../../shared/container-sdk" }
-yama-theme = { path = "../../../shared/yama-theme", optional = true }
+# yama-theme = { path = "../../../shared/yama-theme", optional = true }  # ARCHIVED
 
 # Async runtime
 tokio = { workspace = true }
@@ -115,10 +116,10 @@ yama-test-harness = { path = "../../../shared/test-harness" }
 tokio-test = "0.4"
 
 [features]
-default = ["metal", "gui"]
+default = ["metal"]
 metal = []
 moltenvk = []
-# GUI dependencies (egui + eframe) - disabled for headless/Tauri mode
-gui = ["dep:egui", "dep:eframe", "dep:rfd", "dep:yama-theme"]
+# GUI dependencies (egui + eframe) - ARCHIVED, use Tauri app instead
+# gui = ["dep:egui", "dep:eframe", "dep:rfd", "dep:yama-theme"]
 # Enable direct in-process VLM inference (requires Xcode for Metal shader compilation)
 direct-vlm = ["dep:mistralrs"]

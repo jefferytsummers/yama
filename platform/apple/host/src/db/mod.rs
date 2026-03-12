@@ -257,6 +257,7 @@ mod tests {
             NewProject {
                 name: "Test Project".to_string(),
                 description: Some("A test project".to_string()),
+                config: None,
             },
         )
         .await
@@ -280,6 +281,7 @@ mod tests {
             NewProject {
                 name: "Test Project".to_string(),
                 description: None,
+                config: None,
             },
         )
         .await
@@ -314,6 +316,7 @@ mod tests {
             NewProject {
                 name: "Test Project".to_string(),
                 description: None,
+                config: None,
             },
         )
         .await
@@ -368,6 +371,7 @@ mod tests {
             NewProject {
                 name: "Test".to_string(),
                 description: None,
+                config: None,
             },
         )
         .await
@@ -461,6 +465,7 @@ mod tests {
             NewProject {
                 name: "Test".to_string(),
                 description: None,
+                config: None,
             },
         )
         .await

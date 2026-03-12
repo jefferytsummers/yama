@@ -13166,7 +13166,6 @@ dependencies = [
  "yama-platform-traits",
  "yama-protocol",
  "yama-test-harness",
- "yama-theme",
 ]
 
 [[package]]
@@ -13257,13 +13256,6 @@ dependencies = [
  "tokio-test",
  "tracing",
  "yama-protocol",
-]
-
-[[package]]
-name = "yama-theme"
-version = "0.1.0"
-dependencies = [
- "eframe",
 ]
 
 [[package]]

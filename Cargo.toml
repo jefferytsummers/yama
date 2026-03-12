@@ -8,7 +8,7 @@ members = [
     "shared/agent-sdk",
     "shared/container-sdk",
     "shared/test-harness",
-    "shared/yama-theme",
+    # "shared/yama-theme",  # ARCHIVED - egui theme moved to _archived/
 
     # Platform-agnostic containers
     "containers/agent",
